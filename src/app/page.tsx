@@ -1,7 +1,8 @@
 import { RecentFeedSection } from "@/components/recent-feed-section";
 import { SiteHeader } from "@/components/site-header";
-import { StarCard } from "@/components/star-card";
+import { StarAvatarStrip } from "@/components/star-avatar-strip";
 import { getAllStars, getRecentFeed } from "@/lib/stars";
+import Link from "next/link";
 
 export default function HomePage() {
   const stars = getAllStars();
@@ -11,30 +12,26 @@ export default function HomePage() {
     <>
       <SiteHeader />
       <main className="mx-auto min-h-screen max-w-lg px-4 pb-12 pt-6">
-        <section className="mb-8">
+        <section className="mb-5">
           <h1 className="text-2xl font-bold tracking-tight text-violet-950">
-            内娱艺人资料
+            内娱艺人动态
           </h1>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-600">
-            基本档案 + 动态时间线，Demo 内测版。数据可在{" "}
-            <code className="rounded bg-violet-50 px-1 text-violet-800">
-              content/stars/
-            </code>{" "}
-            中编辑。
-          </p>
-        </section>
-
-        <section className="mb-10">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-violet-700">
-            明星
-          </h2>
-          <ul className="space-y-3">
-            {stars.map((star) => (
-              <li key={star.id}>
-                <StarCard star={star} />
-              </li>
-            ))}
-          </ul>
+          <div className="mt-1 flex items-baseline justify-between gap-3">
+            <p className="text-sm text-zinc-600">
+              共收录{" "}
+              <span className="font-medium text-violet-800">{stars.length}</span>{" "}
+              位艺人
+            </p>
+            <Link
+              href="/stars"
+              className="shrink-0 text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline"
+            >
+              全部明星 →
+            </Link>
+          </div>
+          <div className="mt-4">
+            <StarAvatarStrip stars={stars} />
+          </div>
         </section>
 
         <section>

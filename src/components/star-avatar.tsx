@@ -16,9 +16,11 @@ function hashName(name: string): number {
 export function StarAvatar({
   name,
   size = "md",
+  shape = "rounded",
 }: {
   name: string;
   size?: "sm" | "md" | "lg";
+  shape?: "rounded" | "circle";
 }) {
   const initial = name.charAt(0);
   const gradient = gradients[hashName(name) % gradients.length];
@@ -28,10 +30,11 @@ export function StarAvatar({
       : size === "lg"
         ? "h-20 w-20 text-3xl"
         : "h-14 w-14 text-xl";
+  const shapeClass = shape === "circle" ? "rounded-full" : "rounded-2xl";
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br font-semibold text-white shadow-sm ${gradient} ${sizeClass}`}
+      className={`flex shrink-0 items-center justify-center bg-gradient-to-br font-semibold text-white shadow-sm ${gradient} ${sizeClass} ${shapeClass}`}
       aria-hidden
     >
       {initial}

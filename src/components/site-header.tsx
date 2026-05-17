@@ -24,6 +24,12 @@ export function SiteHeader() {
             首页
           </Link>
           <Link
+            href="/stars"
+            className="text-violet-900/70 transition-colors hover:text-violet-900"
+          >
+            明星
+          </Link>
+          <Link
             href="/about"
             className="text-violet-900/70 transition-colors hover:text-violet-900"
           >
