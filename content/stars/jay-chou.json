@@ -1,0 +1,80 @@
+{
+  "id": "jay-chou",
+  "slug": "jay-chou",
+  "name": "周杰伦",
+  "stageName": "Jay Chou",
+  "birthDate": "1979-01-18",
+  "birthplace": "台湾台北",
+  "bio": "华语流行乐坛标志性创作歌手、音乐人、演员与导演。以融合 R&B、嘻哈与中国风的作品闻名，代表作横跨专辑、演唱会与影视作品。",
+  "tags": ["歌手", "创作人", "演员"],
+  "works": [
+    {
+      "id": "w1",
+      "type": "music",
+      "title": "七里香",
+      "year": 2004,
+      "roleOrTrack": "专辑",
+      "platformUrl": "https://music.163.com"
+    },
+    {
+      "id": "w2",
+      "type": "music",
+      "title": "依然范特西",
+      "year": 2006,
+      "roleOrTrack": "专辑"
+    },
+    {
+      "id": "w3",
+      "type": "film",
+      "title": "不能说的秘密",
+      "year": 2007,
+      "roleOrTrack": "导演 / 主演"
+    },
+    {
+      "id": "w4",
+      "type": "music",
+      "title": "最伟大的作品",
+      "year": 2022,
+      "roleOrTrack": "专辑"
+    },
+    {
+      "id": "w5",
+      "type": "variety",
+      "title": "中国好声音",
+      "year": 2015,
+      "roleOrTrack": "导师"
+    }
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "date": "2024-12-31",
+      "type": "activity",
+      "title": "跨年演出",
+      "summary": "参与跨年晚会演出，演唱多首经典曲目。（示例条目，请替换为实际来源）",
+      "sourceName": "官方微博",
+      "sourceUrl": "https://weibo.com",
+      "reliability": "confirmed"
+    },
+    {
+      "id": "e2",
+      "date": "2024-06-19",
+      "type": "release",
+      "title": "演唱会相关动态",
+      "summary": "公布巡演相关消息，引发粉丝关注。（示例条目，请替换为实际来源）",
+      "sourceName": "工作室",
+      "sourceUrl": "https://weibo.com",
+      "reliability": "confirmed"
+    },
+    {
+      "id": "e3",
+      "date": "2022-07-15",
+      "type": "release",
+      "title": "专辑《最伟大的作品》发行",
+      "summary": "发行同名专辑，收录多首原创歌曲。",
+      "sourceName": "网易云音乐",
+      "sourceUrl": "https://music.163.com",
+      "reliability": "confirmed"
+    }
+  ]
+}

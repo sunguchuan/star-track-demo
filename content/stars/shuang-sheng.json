@@ -1,0 +1,79 @@
+{
+  "id": "shuang-sheng",
+  "slug": "shuang-sheng",
+  "name": "双笙",
+  "stageName": "双笙（陈元汐）",
+  "birthDate": "2000-04-28",
+  "birthplace": "重庆",
+  "bio": "新生代国风歌手，以清澈嗓音演绎古风、民谣与流行跨界作品。活跃于网络音乐平台与线下演出，代表作为多首广为传播的国风单曲。",
+  "tags": ["歌手", "国风"],
+  "works": [
+    {
+      "id": "w1",
+      "type": "music",
+      "title": "采茶记",
+      "year": 2016,
+      "roleOrTrack": "单曲"
+    },
+    {
+      "id": "w2",
+      "type": "music",
+      "title": "世末歌者",
+      "year": 2016,
+      "roleOrTrack": "翻唱 / 演唱"
+    },
+    {
+      "id": "w3",
+      "type": "music",
+      "title": "大鱼",
+      "year": 2016,
+      "roleOrTrack": "翻唱"
+    },
+    {
+      "id": "w4",
+      "type": "music",
+      "title": "故梦",
+      "year": 2017,
+      "roleOrTrack": "单曲"
+    },
+    {
+      "id": "w5",
+      "type": "stage",
+      "title": "国风音乐节演出",
+      "year": 2019,
+      "roleOrTrack": "现场演唱"
+    }
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "date": "2024-08-15",
+      "type": "activity",
+      "title": "线下演出",
+      "summary": "参与国风主题音乐活动演出。（示例条目，请替换为实际来源）",
+      "sourceName": "活动官方",
+      "sourceUrl": "https://weibo.com",
+      "reliability": "confirmed"
+    },
+    {
+      "id": "e2",
+      "date": "2023-05-20",
+      "type": "release",
+      "title": "新单曲发布",
+      "summary": "发布原创国风单曲，于音乐平台上线。（示例条目，请替换为实际来源）",
+      "sourceName": "网易云音乐",
+      "sourceUrl": "https://music.163.com",
+      "reliability": "confirmed"
+    },
+    {
+      "id": "e3",
+      "date": "2020-11-01",
+      "type": "announcement",
+      "title": "艺名相关说明",
+      "summary": "公开说明艺名使用与创作方向。（示例条目，请替换为实际来源）",
+      "sourceName": "官方微博",
+      "sourceUrl": "https://weibo.com",
+      "reliability": "media"
+    }
+  ]
+}
