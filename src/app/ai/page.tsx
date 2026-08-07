@@ -21,9 +21,9 @@ export default function AiPage() {
 
         <h1 className="text-2xl font-bold text-violet-950">混合 AI 助手</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          笔记保存在本机浏览器；默认走本地{" "}
+          笔记保存在本机浏览器。本机开发默认走{" "}
           <code className="rounded bg-violet-50 px-1 text-xs">gemma4</code>
-          ，深度分析可路由到云端。需本机 Ollama 已启动。
+          ；线上或 Ollama 不可用时自动改走云端。
         </p>
 
         <div className="mt-6">

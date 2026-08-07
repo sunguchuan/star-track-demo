@@ -1,5 +1,6 @@
 import { streamCloudChat } from "@/lib/ai/cloud";
 import {
+  shouldFallbackToCloud,
   shouldFallbackToLocal,
   toProviderError,
   type AiProviderError,
@@ -7,8 +8,10 @@ import {
 import { streamOllamaChat } from "@/lib/ai/ollama";
 import { buildMessages } from "@/lib/ai/prompts";
 import {
+  getCloudModel,
   getLocalModel,
   isCloudConfigured,
+  isLocalAiRuntime,
   resolveRoute,
 } from "@/lib/ai/router";
 import { createSseResponse, sseEncode } from "@/lib/ai/sse";
@@ -105,11 +108,13 @@ export async function POST(request: Request) {
   const taskType = body.taskType ?? "chat";
   const strategy = body.strategy ?? "auto";
   const cloudAvailable = isCloudConfigured();
+  const localRuntime = isLocalAiRuntime();
   const decision = resolveRoute({
     taskType,
     strategy,
     inputLength: body.input.trim().length,
     cloudAvailable,
+    localRuntime,
   });
 
   const messages = buildMessages(taskType, body.input.trim(), body.messages);
@@ -141,8 +146,39 @@ export async function POST(request: Request) {
         } catch (err) {
           const providerErr = toProviderError(err, via);
 
+          // Local unreachable → cloud (any strategy, if Key present)
           if (
+            via === "local" &&
+            cloudAvailable &&
+            shouldFallbackToCloud(providerErr)
+          ) {
+            const cloudModel = getCloudModel();
+            push({
+              type: "error",
+              message: `${providerErr.message}，正在改用云端…`,
+              code: providerErr.code,
+              hint: providerErr.hint,
+              retryable: true,
+            });
+
+            via = "cloud";
+            model = cloudModel;
+            reason = "本地不可用，已自动改走云端";
+            push({ type: "meta", via, model, reason });
+
+            for await (const text of runModel({
+              target: "cloud",
+              model: cloudModel,
+              messages,
+              signal: request.signal,
+            })) {
+              if (request.signal.aborted) break;
+              push({ type: "delta", text });
+            }
+          } else if (
+            // Cloud quota/rate-limit → local (only when local runtime makes sense)
             via === "cloud" &&
+            localRuntime &&
             strategy === "auto" &&
             shouldFallbackToLocal(providerErr)
           ) {
@@ -191,6 +227,7 @@ export async function POST(request: Request) {
     headers: {
       "X-AI-Via": decision.target,
       "X-AI-Model": decision.model,
+      "X-AI-Local-Runtime": localRuntime ? "1" : "0",
     },
   });
 }

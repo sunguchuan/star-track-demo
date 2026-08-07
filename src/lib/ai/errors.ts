@@ -239,3 +239,13 @@ export function shouldFallbackToLocal(err: unknown): boolean {
   const e = toProviderError(err, "cloud");
   return e.code === "quota_exhausted" || e.code === "rate_limited";
 }
+
+/** Local failures that should fall back to cloud when Key is configured. */
+export function shouldFallbackToCloud(err: unknown): boolean {
+  const e = toProviderError(err, "local");
+  return (
+    e.code === "ollama_offline" ||
+    e.code === "model_unavailable" ||
+    e.code === "network"
+  );
+}

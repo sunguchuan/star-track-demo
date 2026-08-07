@@ -36,8 +36,14 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 ### 行为说明
 
 - **自动路由**：总结/润色等走本地；深度分析/重构走云端
-- **额度用尽 / 限流（429）**：自动模式下会提示并降级到本地；也可点「改用仅本地重试」
+- **环境检测**：Vercel 等线上环境默认走云端（`VERCEL=1`）；也可用 `AI_FORCE_CLOUD=1` / `AI_FORCE_LOCAL=1` 强制
+- **本地不可用**：连不上 Ollama / 模型缺失时自动改走云端（需已配置 Key）
+- **额度用尽 / 限流（429）**：本机自动模式下会提示并降级到本地；也可点「改用仅本地重试」
 - **笔记**：保存在浏览器 `localStorage`，刷新不丢
+
+### Vercel 部署
+
+在项目 Environment Variables 中配置 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`CLOUD_MODEL`（与本地 `.env.local` 相同）。线上无法使用本机 Ollama。
 
 ## Learn More
 
