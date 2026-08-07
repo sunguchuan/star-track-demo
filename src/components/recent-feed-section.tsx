@@ -2,11 +2,17 @@
 
 import { parseMonthKey } from "@/lib/format";
 import { groupFeedByMonth } from "@/lib/feed";
+import {
+  formatEventCount,
+  formatMonthNavLabel,
+} from "@/lib/i18n/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { FeedItem } from "@/lib/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EventCard } from "./event-card";
 
 export function RecentFeedSection({ events }: { events: FeedItem[] }) {
+  const { locale, t } = useLocale();
   const groups = useMemo(() => groupFeedByMonth(events), [events]);
   const [activeMonth, setActiveMonth] = useState(() => groups[0]?.monthKey ?? "");
 
@@ -53,17 +59,13 @@ export function RecentFeedSection({ events }: { events: FeedItem[] }) {
   if (groups.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-8 text-center text-sm text-violet-700/70">
-        暂无动态，请在 content/stars 对应 JSON 中补充 events。
+        {t.home.emptyFeed}
       </p>
     );
   }
 
   return (
-    <div
-      className="relative"
-      role="feed"
-      aria-label="最近更新时间线"
-    >
+    <div className="relative" role="feed" aria-label={t.home.feedAria}>
       <div
         className="pointer-events-none absolute bottom-4 left-[4.25rem] top-2 w-px bg-violet-200"
         aria-hidden
@@ -72,6 +74,7 @@ export function RecentFeedSection({ events }: { events: FeedItem[] }) {
       <div className="space-y-0">
         {groups.map((group, index) => {
           const { year, month } = parseMonthKey(group.monthKey);
+          const monthLabel = formatMonthNavLabel(year, month, locale);
           const isActive = activeMonth === group.monthKey;
           const isLast = index === groups.length - 1;
 
@@ -83,14 +86,20 @@ export function RecentFeedSection({ events }: { events: FeedItem[] }) {
             >
               <nav
                 className="w-[4.25rem] shrink-0"
-                aria-label={`${year}年${month}月`}
+                aria-label={
+                  locale === "zh"
+                    ? `${year}年${month}月`
+                    : monthLabel.month + " " + year
+                }
               >
                 <button
                   type="button"
                   onClick={() => scrollToMonth(group.anchorId, group.monthKey)}
                   aria-current={isActive ? "true" : undefined}
                   className={`relative w-full pr-3 text-right transition-colors ${
-                    isActive ? "text-violet-900" : "text-violet-500 hover:text-violet-700"
+                    isActive
+                      ? "text-violet-900"
+                      : "text-violet-500 hover:text-violet-700"
                   }`}
                 >
                   <span
@@ -101,14 +110,18 @@ export function RecentFeedSection({ events }: { events: FeedItem[] }) {
                     }`}
                     aria-hidden
                   />
-                  <p className="text-[11px] leading-tight tabular-nums">{year}</p>
-                  <p className="text-sm font-semibold leading-tight">{month}月</p>
+                  <p className="text-[11px] leading-tight tabular-nums">
+                    {monthLabel.year}
+                  </p>
+                  <p className="text-sm font-semibold leading-tight">
+                    {monthLabel.month}
+                  </p>
                   <p
                     className={`mt-0.5 text-[10px] tabular-nums ${
                       isActive ? "text-violet-600" : "text-violet-400"
                     }`}
                   >
-                    {group.events.length} 条
+                    {formatEventCount(group.events.length, locale)}
                   </p>
                 </button>
               </nav>

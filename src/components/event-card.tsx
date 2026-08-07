@@ -1,4 +1,10 @@
-import { formatDate, formatEventType } from "@/lib/format";
+"use client";
+
+import {
+  formatDateLocalized,
+  formatEventTypeLocalized,
+} from "@/lib/i18n/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { FeedItem, StarEvent } from "@/lib/types";
 import Link from "next/link";
 
@@ -11,14 +17,16 @@ export function EventCard({
   event: EventCardData | FeedItem;
   showStar?: boolean;
 }) {
+  const { locale, t } = useLocale();
+
   return (
     <li className="rounded-xl border border-violet-100 bg-white p-4 shadow-sm">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <time className="text-xs font-medium text-violet-600">
-          {formatDate(event.date)}
+          {formatDateLocalized(event.date, locale)}
         </time>
         <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">
-          {formatEventType(event.type)}
+          {formatEventTypeLocalized(event.type, locale)}
         </span>
         {showStar && "starName" in event && event.starName && event.starSlug && (
           <Link
@@ -37,7 +45,8 @@ export function EventCard({
         rel="noopener noreferrer"
         className="mt-3 inline-flex text-xs font-medium text-violet-700 hover:text-violet-900 hover:underline"
       >
-        来源：{event.sourceName} ↗
+        {t.home.sourcePrefix}
+        {event.sourceName} ↗
       </a>
     </li>
   );

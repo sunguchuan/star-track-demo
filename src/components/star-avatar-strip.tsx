@@ -1,12 +1,17 @@
+"use client";
+
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { Star } from "@/lib/types";
 import Link from "next/link";
 import { StarAvatar } from "./star-avatar";
 
 export function StarAvatarStrip({ stars }: { stars: Star[] }) {
+  const { t } = useLocale();
+
   return (
     <ul
       className="flex gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      aria-label="快速进入艺人主页"
+      aria-label={t.home.avatarStripAria}
     >
       {stars.map((star) => (
         <li key={star.id} className="shrink-0">
