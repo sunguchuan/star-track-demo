@@ -43,7 +43,15 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 
 ### Vercel 部署
 
-在项目 Environment Variables 中配置 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`CLOUD_MODEL`（与本地 `.env.local` 相同）。线上无法使用本机 Ollama。
+在项目 **Settings → Environment Variables**（Production）中配置与本地 `.env.local` 相同的：
+
+```env
+OPENAI_API_KEY=你的_Key
+OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+CLOUD_MODEL=gemini-3.1-flash-lite
+```
+
+保存后需 **Redeploy**。线上无法使用本机 Ollama；未配置 Key 时会明确报错，而不会再尝试本地模型。
 
 ## Learn More
 

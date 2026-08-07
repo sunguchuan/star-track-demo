@@ -132,6 +132,28 @@ export async function POST(request: Request) {
 
       push({ type: "meta", via, model, reason });
 
+      // Hosted without Key: fail clearly — never attempt Ollama on the server.
+      if (!localRuntime && !cloudAvailable) {
+        push({
+          type: "error",
+          message: "线上环境未配置云端 API Key",
+          code: "auth",
+          hint: "请在 Vercel → Project → Settings → Environment Variables 添加 OPENAI_API_KEY、OPENAI_BASE_URL、CLOUD_MODEL（与本地 .env.local 相同）。",
+          retryable: false,
+        });
+        push({ type: "done" });
+        controller.close();
+        return;
+      }
+
+      // Safety: never call local provider off local runtime.
+      if (!localRuntime && via === "local") {
+        via = "cloud";
+        model = getCloudModel();
+        reason = "线上环境已强制改走云端";
+        push({ type: "meta", via, model, reason });
+      }
+
       try {
         try {
           for await (const text of runModel({
@@ -149,6 +171,7 @@ export async function POST(request: Request) {
           // Local unreachable → cloud (any strategy, if Key present)
           if (
             via === "local" &&
+            localRuntime &&
             cloudAvailable &&
             shouldFallbackToCloud(providerErr)
           ) {
@@ -225,9 +248,10 @@ export async function POST(request: Request) {
 
   return createSseResponse(stream, {
     headers: {
-      "X-AI-Via": decision.target,
+      "X-AI-Via": decision.target === "local" && !localRuntime ? "cloud" : decision.target,
       "X-AI-Model": decision.model,
       "X-AI-Local-Runtime": localRuntime ? "1" : "0",
+      "X-AI-Cloud-Configured": cloudAvailable ? "1" : "0",
     },
   });
 }

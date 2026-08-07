@@ -22,20 +22,12 @@ export function isCloudConfigured(): boolean {
 export function isLocalAiRuntime(): boolean {
   if (process.env.AI_FORCE_CLOUD === "1") return false;
   if (process.env.AI_FORCE_LOCAL === "1") return true;
+  // Vercel sets VERCEL=1; also treat other common hosts as non-local.
   if (process.env.VERCEL === "1") return false;
+  if (process.env.VERCEL_ENV) return false;
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return false;
+  if (process.env.NETLIFY === "true") return false;
   return true;
-}
-
-function preferCloudWhenLocalUnavailable(
-  cloudAvailable: boolean,
-  reason: string,
-): RouteDecision | null {
-  if (!cloudAvailable) return null;
-  return {
-    target: "cloud",
-    reason,
-    model: CLOUD_MODEL,
-  };
 }
 
 export function resolveRoute(options: {
@@ -53,14 +45,26 @@ export function resolveRoute(options: {
     localRuntime = isLocalAiRuntime(),
   } = options;
 
-  if (strategy === "only-local") {
-    if (!localRuntime) {
-      const hosted = preferCloudWhenLocalUnavailable(
-        cloudAvailable,
-        "线上环境无法连接本机 Ollama，已自动改走云端",
-      );
-      if (hosted) return hosted;
+  // Hosted runtimes can never reach the visitor's Ollama — never pick local.
+  if (!localRuntime) {
+    if (cloudAvailable) {
+      return {
+        target: "cloud",
+        reason:
+          strategy === "only-local"
+            ? "线上环境无法连接本机 Ollama，已自动改走云端"
+            : "检测到非本机运行环境，已改走云端",
+        model: CLOUD_MODEL,
+      };
     }
+    return {
+      target: "cloud",
+      reason: "线上环境未配置 OPENAI_API_KEY，无法使用本机 Ollama",
+      model: CLOUD_MODEL,
+    };
+  }
+
+  if (strategy === "only-local") {
     return {
       target: "local",
       reason: "用户强制仅本地",
@@ -70,17 +74,10 @@ export function resolveRoute(options: {
 
   if (strategy === "only-cloud") {
     if (!cloudAvailable) {
-      if (localRuntime) {
-        return {
-          target: "local",
-          reason: "强制云端但未配置 OPENAI_API_KEY，已降级本地",
-          model: LOCAL_MODEL,
-        };
-      }
       return {
-        target: "cloud",
-        reason: "强制云端但未配置 OPENAI_API_KEY（请求将失败）",
-        model: CLOUD_MODEL,
+        target: "local",
+        reason: "强制云端但未配置 OPENAI_API_KEY，已降级本地",
+        model: LOCAL_MODEL,
       };
     }
     return {
@@ -90,16 +87,7 @@ export function resolveRoute(options: {
     };
   }
 
-  // Hosted / non-local: prefer cloud whenever configured.
-  if (!localRuntime) {
-    const hosted = preferCloudWhenLocalUnavailable(
-      cloudAvailable,
-      "检测到非本机运行环境，默认走云端",
-    );
-    if (hosted) return hosted;
-  }
-
-  // auto
+  // auto (local runtime)
   if ((CLOUD_TASKS as readonly string[]).includes(taskType)) {
     if (!cloudAvailable) {
       return {
