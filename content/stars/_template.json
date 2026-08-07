@@ -1,0 +1,21 @@
+{
+  "id": "artist-slug",
+  "slug": "artist-slug",
+  "name": "艺人姓名",
+  "stageName": "英文名或常用艺名（可选）",
+  "birthDate": "2000-01-01",
+  "birthplace": "籍贯（可选）",
+  "bio": "一两句简介。",
+  "tags": ["歌手"],
+  "sources": {
+    "weibo": "https://weibo.com/账号",
+    "studioWeibo": "https://weibo.com/u/工作室（可选）",
+    "douban": "https://movie.douban.com/celebrity/或 music.douban.com/musician/",
+    "neteaseMusic": "https://music.163.com/#/artist?id=数字ID",
+    "qqMusic": "https://y.qq.com/n/ryqq/singer/（可选）",
+    "bilibili": "https://space.bilibili.com/（可选）",
+    "maintainerNotes": "动态：微博。作品：豆瓣+网易云。每周检查一次。"
+  },
+  "works": [],
+  "events": []
+}

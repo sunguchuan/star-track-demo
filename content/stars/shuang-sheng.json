@@ -7,6 +7,13 @@
   "birthplace": "重庆",
   "bio": "新生代国风歌手，以清澈嗓音演绎古风、民谣与流行跨界作品。活跃于网络音乐平台与线下演出，代表作为多首广为传播的国风单曲。",
   "tags": ["歌手", "国风"],
+  "sources": {
+    "weibo": "https://weibo.com/u/5896271664",
+    "douban": "https://music.douban.com/musician/13623407",
+    "neteaseMusic": "https://music.163.com/#/artist?id=12002248",
+    "bilibili": "https://space.bilibili.com/517586",
+    "maintainerNotes": "动态：微博为主。国风作品与翻唱可在网易云艺人页核对曲目；豆瓣音乐人页补全作品年表。若账号更名，以微博认证名为准更新 JSON。"
+  },
   "works": [
     {
       "id": "w1",

@@ -7,6 +7,14 @@
   "birthplace": "上海",
   "bio": "华语流行创作女歌手，拥有宽广音域与爆发力。作品涵盖流行、摇滚与电子元素，活跃于两岸三地乐坛与大型演唱会舞台。",
   "tags": ["歌手", "创作人"],
+  "sources": {
+    "weibo": "https://weibo.com/gem1114",
+    "studioWeibo": "https://weibo.com/u/5850053904",
+    "douban": "https://music.douban.com/musician/126561/",
+    "neteaseMusic": "https://music.163.com/#/artist?id=77605",
+    "qqMusic": "https://y.qq.com/n/ryqq/singer/0035i0AG2iSgZq",
+    "maintainerNotes": "动态：个人微博 + 工作室微博。专辑以网易云/豆瓣音乐人页为准；报道类可补权威媒体链接到 events.sourceUrl。"
+  },
   "works": [
     {
       "id": "w1",

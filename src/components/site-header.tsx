@@ -30,6 +30,18 @@ export function SiteHeader() {
             明星
           </Link>
           <Link
+            href="/inbox"
+            className="text-violet-900/70 transition-colors hover:text-violet-900"
+          >
+            待审
+          </Link>
+          <Link
+            href="/ai"
+            className="text-violet-900/70 transition-colors hover:text-violet-900"
+          >
+            AI
+          </Link>
+          <Link
             href="/about"
             className="text-violet-900/70 transition-colors hover:text-violet-900"
           >

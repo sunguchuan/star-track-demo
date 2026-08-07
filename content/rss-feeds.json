@@ -1,0 +1,30 @@
+{
+  "rsshubBase": "https://rsshub.app",
+  "_comment": "建议自建 RSSHub 后将 rsshubBase 改为你的实例地址。公共实例可能限流或不可用。",
+  "feeds": [
+    {
+      "starSlug": "jay-chou",
+      "label": "工作室微博",
+      "weiboUid": "1165631310",
+      "enabled": true
+    },
+    {
+      "starSlug": "gem",
+      "label": "个人微博",
+      "weiboUid": "1705586121",
+      "enabled": true
+    },
+    {
+      "starSlug": "gem",
+      "label": "工作室微博",
+      "weiboUid": "7055544327",
+      "enabled": true
+    },
+    {
+      "starSlug": "shuang-sheng",
+      "label": "工作室微博",
+      "weiboUid": "7839024071",
+      "enabled": true
+    }
+  ]
+}

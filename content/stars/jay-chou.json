@@ -7,6 +7,13 @@
   "birthplace": "台湾台北",
   "bio": "华语流行乐坛标志性创作歌手、音乐人、演员与导演。以融合 R&B、嘻哈与中国风的作品闻名，代表作横跨专辑、演唱会与影视作品。",
   "tags": ["歌手", "创作人", "演员"],
+  "sources": {
+    "weibo": "https://weibo.com/jaychou",
+    "douban": "https://movie.douban.com/celebrity/1054440/",
+    "neteaseMusic": "https://music.163.com/#/artist?id=6452",
+    "qqMusic": "https://y.qq.com/n/ryqq/singer/0025NhlN2yWrP4",
+    "maintainerNotes": "动态：个人微博。作品/专辑：豆瓣电影人 + 网易云艺人页。链接失效时请从微博认证信息核对后更新。"
+  },
   "works": [
     {
       "id": "w1",

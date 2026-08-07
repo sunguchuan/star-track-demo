@@ -1,4 +1,5 @@
 import { StarDetailTabs } from "@/components/star-detail-tabs";
+import { StarSourcesPanel } from "@/components/star-sources-panel";
 import { SiteHeader } from "@/components/site-header";
 import { StarAvatar } from "@/components/star-avatar";
 import { formatDate } from "@/lib/format";
@@ -80,6 +81,8 @@ export default async function StarPage({
           </dl>
           <p className="mt-4 text-sm leading-relaxed text-zinc-600">{star.bio}</p>
         </section>
+
+        <StarSourcesPanel sources={star.sources} />
 
         <StarDetailTabs star={star} />
       </main>

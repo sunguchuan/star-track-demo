@@ -10,7 +10,9 @@ function readStarFile(filename: string): Star {
 }
 
 export function getAllStars(): Star[] {
-  const files = readdirSync(CONTENT_DIR).filter((f) => f.endsWith(".json"));
+  const files = readdirSync(CONTENT_DIR).filter(
+    (f) => f.endsWith(".json") && !f.startsWith("_"),
+  );
   return files
     .map(readStarFile)
     .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
