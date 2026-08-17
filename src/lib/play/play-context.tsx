@@ -56,21 +56,23 @@ type PlacePrivateInput = {
   details: string;
 };
 
+type PlayActionResult = { ok: true } | { ok: false; reason: PlayErrorKey };
+
 type PlayContextValue = {
   ready: boolean;
   store: PlayStore;
-  placeListedOrder: (input: PlaceListedInput) => { ok: true } | { ok: false; reason: PlayErrorKey };
-  placePrivateOrder: (
-    input: PlacePrivateInput,
-  ) => { ok: true } | { ok: false; reason: PlayErrorKey };
+  placeListedOrder: (input: PlaceListedInput) => PlayActionResult;
+  placePrivateOrder: (input: PlacePrivateInput) => PlayActionResult;
   actOnOrder: (
     orderId: string,
     action: OrderAction,
     as: "viewer" | "streamer",
-  ) => { ok: true } | { ok: false; reason: PlayErrorKey };
-  redeemTickets: () => { ok: true } | { ok: false; reason: PlayErrorKey };
+  ) => PlayActionResult;
+  redeemTickets: () => PlayActionResult;
   setActingStreamerId: (id: string) => void;
-  goOfflineAndRefund: () => { ok: true; refunded: number } | { ok: false; reason: PlayErrorKey };
+  goOfflineAndRefund: () =>
+    | { ok: true; refunded: number }
+    | { ok: false; reason: PlayErrorKey };
 };
 
 const PlayContext = createContext<PlayContextValue | null>(null);
@@ -175,18 +177,20 @@ export function PlayProvider({
   }, [ready, store]);
 
   const commitOrder = useCallback(
-    (draft: Omit<
-      PlayOrder,
-      | "id"
-      | "createdAt"
-      | "updatedAt"
-      | "status"
-      | "viewerId"
-      | "funds"
-      | "acceptBy"
-      | "startBy"
-      | "cancelReason"
-    >) => {
+    (
+      draft: Omit<
+        PlayOrder,
+        | "id"
+        | "createdAt"
+        | "updatedAt"
+        | "status"
+        | "viewerId"
+        | "funds"
+        | "acceptBy"
+        | "startBy"
+        | "cancelReason"
+      >,
+    ): PlayActionResult => {
       const check = assertOrderAllowed({
         kind: draft.kind,
         title: draft.title,
@@ -194,20 +198,17 @@ export function PlayProvider({
         details: draft.details,
         seed: draft.seed,
       });
-      if (!check.ok) return check;
+      if (!check.ok) return { ok: false, reason: check.reason };
 
       const prev = storeRef.current;
       if (prev.tickets < draft.priceTickets) {
-        return { ok: false as const, reason: "tickets_insufficient" };
+        return { ok: false, reason: "tickets_insufficient" };
       }
       if (
         heldCountForStreamer(prev.orders, draft.streamerId) >=
         MAX_HELD_PER_STREAMER
       ) {
-        return {
-          ok: false as const,
-          reason: "queue_full",
-        };
+        return { ok: false, reason: "queue_full" };
       }
 
       const stamp = nowIso();
@@ -228,13 +229,13 @@ export function PlayProvider({
       };
       storeRef.current = next;
       setStore(next);
-      return { ok: true as const };
+      return { ok: true };
     },
     [],
   );
 
   const placeListedOrder = useCallback(
-    (input: PlaceListedInput) => {
+    (input: PlaceListedInput): PlayActionResult => {
       return commitOrder({
         goodsId: input.goods.id,
         isPrivate: false,
@@ -251,13 +252,13 @@ export function PlayProvider({
   );
 
   const placePrivateOrder = useCallback(
-    (input: PlacePrivateInput) => {
+    (input: PlacePrivateInput): PlayActionResult => {
       if (!input.streamer.acceptsPrivateOrders) {
-        return { ok: false as const, reason: "private_disabled" };
+        return { ok: false, reason: "private_disabled" };
       }
       const price = kindPrice(input.streamer, input.game, input.kind);
       if (price == null) {
-        return { ok: false as const, reason: "kind_not_offered" };
+        return { ok: false, reason: "kind_not_offered" };
       }
       return commitOrder({
         goodsId: null,
@@ -275,25 +276,29 @@ export function PlayProvider({
   );
 
   const actOnOrder = useCallback(
-    (orderId: string, action: OrderAction, as: "viewer" | "streamer") => {
+    (
+      orderId: string,
+      action: OrderAction,
+      as: "viewer" | "streamer",
+    ): PlayActionResult => {
       const prev = storeRef.current;
       const order = prev.orders.find((item) => item.id === orderId);
-      if (!order) return { ok: false as const, reason: "order_not_found" };
+      if (!order) return { ok: false, reason: "order_not_found" };
       if (as === "viewer" && action !== "cancel") {
-        return { ok: false as const, reason: "viewer_cancel_only" };
+        return { ok: false, reason: "viewer_cancel_only" };
       }
       if (as === "viewer" && order.viewerId !== prev.viewerId) {
-        return { ok: false as const, reason: "not_own_order" };
+        return { ok: false, reason: "not_own_order" };
       }
       if (as === "streamer" && order.streamerId !== prev.actingStreamerId) {
-        return { ok: false as const, reason: "wrong_streamer" };
+        return { ok: false, reason: "wrong_streamer" };
       }
 
       const result = applyOrderAction(prev, orderId, action, as);
-      if (!result.ok) return result;
+      if (!result.ok) return { ok: false, reason: result.reason };
       storeRef.current = result.next;
       setStore(result.next);
-      return { ok: true as const };
+      return { ok: true };
     },
     [],
   );
@@ -313,7 +318,9 @@ export function PlayProvider({
     setStore(next);
   }, []);
 
-  const goOfflineAndRefund = useCallback(() => {
+  const goOfflineAndRefund = useCallback(():
+    | { ok: true; refunded: number }
+    | { ok: false; reason: PlayErrorKey } => {
     const prev = storeRef.current;
     const waiting = prev.orders.filter(
       (order) =>
@@ -322,7 +329,7 @@ export function PlayProvider({
         (order.status === "pending_accept" || order.status === "accepted"),
     );
     if (waiting.length === 0) {
-      return { ok: false as const, reason: "no_held_queue" };
+      return { ok: false, reason: "no_held_queue" };
     }
 
     let next = prev;
@@ -334,13 +341,13 @@ export function PlayProvider({
     }
     storeRef.current = next;
     setStore(next);
-    return { ok: true as const, refunded: waiting.length };
+    return { ok: true, refunded: waiting.length };
   }, []);
 
-  const redeemTickets = useCallback(() => {
+  const redeemTickets = useCallback((): PlayActionResult => {
     const prev = storeRef.current;
     if (prev.tickets >= MAX_TICKETS) {
-      return { ok: false as const, reason: "tickets_capped" };
+      return { ok: false, reason: "tickets_capped" };
     }
     const next = {
       ...prev,
@@ -348,7 +355,7 @@ export function PlayProvider({
     };
     storeRef.current = next;
     setStore(next);
-    return { ok: true as const };
+    return { ok: true };
   }, []);
 
   const setActingStreamerId = useCallback((id: string) => {
