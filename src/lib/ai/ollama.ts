@@ -14,7 +14,10 @@ type OllamaChatChunk = {
   error?: string;
 };
 
-/** Stream token text from Ollama native /api/chat (NDJSON). */
+/**
+ * Call Ollama — POST {OLLAMA_BASE}/api/chat (native NDJSON stream).
+ * Parse each line's chunk.message.content and yield tokens to the Gateway.
+ */
 export async function* streamOllamaChat(options: {
   model: string;
   messages: ChatMessage[];
@@ -22,6 +25,7 @@ export async function* streamOllamaChat(options: {
 }): AsyncGenerator<string> {
   const { model, messages, signal } = options;
 
+  // Start streaming; connection failures become ollama_offline for cloud fallback
   let res: Response;
   try {
     res = await fetch(`${OLLAMA_BASE}/api/chat`, {
@@ -51,6 +55,7 @@ export async function* streamOllamaChat(options: {
     throw toProviderError(new Error("Ollama 未返回流式响应体"), "local");
   }
 
+  // Read NDJSON: one JSON object per line
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

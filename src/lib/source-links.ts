@@ -14,7 +14,7 @@ export const SOURCE_LINK_LABELS: Record<
 
 export function getSourceEntries(
   sources: StarSources | undefined,
-): { key: keyof typeof SOURCE_LINK_LABELS; label: string; url: string }[] {
+): { key: keyof typeof SOURCE_LINK_LABELS; url: string }[] {
   if (!sources) return [];
 
   return (
@@ -26,7 +26,6 @@ export function getSourceEntries(
     })
     .map((key) => ({
       key,
-      label: SOURCE_LINK_LABELS[key],
       url: sources[key]!.trim(),
     }));
 }

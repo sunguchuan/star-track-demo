@@ -1,5 +1,6 @@
 import type { AiTaskType, ChatMessage } from "./types";
 
+/** Per-task system prompts — instruction layer of the AI framework */
 const TASK_PROMPTS: Record<AiTaskType, string> = {
   summarize: "用简洁中文总结用户给出的文本，保留关键事实，不要编造。",
   polish: "润色用户文本：更清晰、自然，保持原意与语气，直接输出改写结果。",
@@ -13,6 +14,10 @@ const TASK_PROMPTS: Record<AiTaskType, string> = {
   chat: "你是本地优先的笔记助手。简洁、准确、用中文回答。",
 };
 
+/**
+ * Step 3 — Build chat messages:
+ * [system prompt by taskType] + [optional history] + [current user input]
+ */
 export function buildMessages(
   taskType: AiTaskType,
   input: string,

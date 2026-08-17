@@ -1,3 +1,4 @@
+/** Local notes persistence (browser localStorage) — decoupled from model calls; survives refresh */
 export type StoredNote = {
   id: string;
   title: string;

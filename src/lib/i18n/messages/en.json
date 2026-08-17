@@ -1,0 +1,290 @@
+{
+  "brand": "Star Trail Demo",
+  "brandMark": "S",
+  "common": {
+    "backHome": "← Home"
+  },
+  "nav": {
+    "home": "Home",
+    "stars": "Stars",
+    "play": "Play",
+    "inbox": "Inbox",
+    "ai": "AI",
+    "about": "About"
+  },
+  "langToggle": {
+    "aria": "Switch language",
+    "zh": "中文",
+    "en": "EN"
+  },
+  "home": {
+    "title": "C-pop artist updates",
+    "catalogPrefix": "Featuring",
+    "catalogSuffix": "artists",
+    "allStars": "All stars →",
+    "recentUpdates": "Latest updates",
+    "feedAria": "Latest updates timeline",
+    "emptyFeed": "No updates yet. Add events in the matching content/stars JSON files.",
+    "avatarStripAria": "Quick links to artist pages",
+    "monthSuffix": "",
+    "eventCountSuffix": "",
+    "sourcePrefix": "Source: "
+  },
+  "eventType": {
+    "announcement": "Announcement",
+    "award": "Award",
+    "activity": "Event",
+    "release": "Release",
+    "other": "Update"
+  },
+  "play": {
+    "title": "Play requests",
+    "subtitle": "Bilibili-style goods, Stardust, and orders — seeds, challenges, co-op, and on-stream requests only.",
+    "backHome": "← Home",
+    "navHall": "Hall",
+    "navOrders": "Orders",
+    "navStudio": "Studio",
+    "ticketsLabel": "Stardust",
+    "ticketUnit": "Stardust",
+    "redeem": "Redeem",
+    "ticketHint": "Stardust is held in escrow, not spent. Auto-refund if the streamer misses the SLA, goes offline, or cancels. No viewer refund after play starts.",
+    "heldLabel": "Held",
+    "noAccountHint": "Placing an order holds Stardust. Auto-refund if not accepted in 15 min, or not started within 30 min of accept.",
+    "policyBanner": "No rank boosting, boosting services, or account passwords. Streamers play on their own accounts, or both sides log in separately for co-op.",
+    "filterAll": "All",
+    "live": "Live",
+    "offline": "Offline",
+    "emptyGoods": "Nothing listed in this category yet.",
+    "seedLabel": "Seed",
+    "seedPlaceholder": "e.g. a Minecraft or Binding of Isaac seed",
+    "noteLabel": "Notes",
+    "notePlaceholder": "What to play, challenge rules, or in-game name. Never share a password.",
+    "placeOrder": "Place order",
+    "privateTitle": "Custom order",
+    "privateHint": "Pick a streamer and game first, then a type offered for that game. The submit button shows the Stardust cost.",
+    "listedTitle": "Listed packages",
+    "hotPin": "Popular shortcut",
+    "hotAction": "Tap to fill the form",
+    "hotPinned": "Filled in",
+    "streamerLabel": "Streamer",
+    "kindLabel": "Type",
+    "gameLabel": "Game",
+    "gamePlaceholder": "Minecraft / Binding of Isaac / Stardew Valley…",
+    "placePrivate": "Submit private order",
+    "loading": "Loading local orders…",
+    "emptyOrders": "No orders yet. Pick a seed or challenge in the hall.",
+    "privateTag": "Private",
+    "cancelOrder": "Cancel and refund",
+    "abortOrder": "Abort and refund",
+    "goOffline": "Simulate going offline (refund queue)",
+    "fundsHeld": "Held",
+    "fundsRefunded": "Refunded",
+    "fundsReleased": "Released to streamer",
+    "actingAs": "Acting as streamer (demo switch)",
+    "myGoods": "Listed goods",
+    "incomingOrders": "Incoming orders",
+    "emptyStudio": "No orders yet. Place one as a viewer, then come back here to accept it.",
+    "accept": "Accept",
+    "reject": "Reject and refund",
+    "startFulfill": "Start fulfilling",
+    "complete": "Mark complete",
+    "games": {
+      "Minecraft": "Minecraft",
+      "The Binding of Isaac": "The Binding of Isaac",
+      "Slay the Spire": "Slay the Spire",
+      "Stardew Valley": "Stardew Valley",
+      "viewer-pick": "Viewer's pick"
+    },
+    "streamers": {
+      "str-seed-sower": {
+        "name": "Wheatfield Seeds",
+        "bio": "Minecraft survival starts and seed challenges. Public seeds only; never uses a viewer's account."
+      },
+      "str-roguelike-lab": {
+        "name": "Roguelike Lab",
+        "bio": "Seeded Binding of Isaac and Slay the Spire runs, talked through live. No ranked boosting."
+      },
+      "str-farm-night": {
+        "name": "Evening Breeze Farm",
+        "bio": "Stardew Valley co-op farming. Both sides log in on their own accounts and add as friends."
+      }
+    },
+    "goods": {
+      "g-mc-seed-survive": {
+        "title": "Minecraft seeded survival start",
+        "details": "You provide the seed. I play about 2 hours on my own world: spawn, building, mining. Watch along — I won't log into your account."
+      },
+      "g-mc-challenge": {
+        "title": "Minecraft custom-rules challenge",
+        "details": "Half-heart, mining-only, village speedrun, and similar rules go in the notes. I complete it live on my own world."
+      },
+      "g-isaac-seed": {
+        "title": "Binding of Isaac seeded run",
+        "details": "I enter the seed and play a run, talking through item choices. No ranked play, no other people's saves."
+      },
+      "g-sts-seed": {
+        "title": "Slay the Spire seeded run (character optional)",
+        "details": "I start from your seed. Note whether you want standard or Ascension. Played on my own save."
+      },
+      "g-indie-onstream": {
+        "title": "On-stream indie / single-player request",
+        "details": "Pick a single-player game I own or can buy. No competitive ranked play, no logging into your account."
+      },
+      "g-stardew-coop": {
+        "title": "Stardew Valley co-op farming night",
+        "details": "Add as friends and open a co-op farm. Share your in-game name — never a password."
+      }
+    },
+    "kinds": {
+      "seed": "Seed run",
+      "challenge": "Challenge",
+      "coop": "Co-op",
+      "onstream": "On-stream request"
+    },
+    "statuses": {
+      "pending_accept": "Awaiting accept",
+      "accepted": "Accepted",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "rejected": "Rejected"
+    },
+    "funds": {
+      "held": "Held",
+      "refunded": "Refunded",
+      "released": "Released"
+    },
+    "cancelReasons": {
+      "viewer": "Cancelled by viewer",
+      "streamer": "Cancelled by streamer",
+      "timeout": "Auto-refund (timeout)",
+      "offline": "Auto-refund (went offline)"
+    },
+    "slaDue": "Auto-refund due",
+    "slaRemaining": "Auto-refund in {minutes} min",
+    "errors": {
+      "order_not_found": "This order was not found.",
+      "cannot_refund_in_progress": "Play has already started, so you can't refund it yourself. The streamer aborting or a timeout will refund automatically.",
+      "invalid_transition": "That action isn't allowed in the current status.",
+      "tickets_insufficient": "Not enough Stardust. Redeem demo Stardust first.",
+      "queue_full": "This streamer's queue is full. Try later or pick someone else so Stardust isn't held too long.",
+      "private_disabled": "This streamer isn't taking custom orders.",
+      "kind_not_offered": "This streamer doesn't take that request type for this game.",
+      "viewer_cancel_only": "Viewers can only cancel orders that haven't started.",
+      "not_own_order": "You can only manage your own orders.",
+      "wrong_streamer": "Switch to that streamer's identity first.",
+      "no_held_queue": "No held orders waiting in the queue.",
+      "tickets_capped": "Demo Stardust is at the cap.",
+      "policy_boost": "Rank boosting, account sharing, and logging into someone else's account aren't allowed. Use a seed, challenge, co-op, or on-stream request instead.",
+      "kind_not_allowed": "Only seed runs, challenges, co-op, and on-stream requests are allowed.",
+      "seed_required": "Seed orders need a seed code.",
+      "game_required": "Please select a game.",
+      "details_required": "Please add what you want to watch."
+    }
+  },
+  "starsPage": {
+    "title": "All stars",
+    "countPrefix": "Featuring",
+    "countSuffix": "artists",
+    "latestPrefix": "Latest: ",
+    "birthday": "Birthday",
+    "birthplace": "Hometown",
+    "tabsAria": "Artist profile sections",
+    "tabEvents": "Updates",
+    "tabWorks": "Works",
+    "emptyWorks": "No works listed yet.",
+    "link": "Link ↗",
+    "sourcesTitle": "Sources (for maintainers)",
+    "sourcesHint": "Open these first when adding updates or works",
+    "maintainerNotes": "Maintainer note: ",
+    "sources": {
+      "weibo": "Weibo",
+      "studioWeibo": "Studio Weibo",
+      "douban": "Douban",
+      "neteaseMusic": "NetEase Cloud Music",
+      "qqMusic": "QQ Music",
+      "bilibili": "Bilibili"
+    },
+    "workType": {
+      "film": "Film/TV",
+      "music": "Music",
+      "variety": "Variety",
+      "stage": "Stage"
+    }
+  },
+  "about": {
+    "title": "About",
+    "kicker": "Private demo · unofficial fan site",
+    "p1": "Star Trail Demo is a prototype for sharing artist bios and update timelines with friends. It doesn't represent any artist, agency, or official fan club.",
+    "p2": "Information is compiled from public, checkable sources, and every update includes a source link. If something is wrong or infringes rights, please ask for a correction or removal.",
+    "li1": "No private addresses, travel plans, or family details",
+    "li2": "No fundraising, ranking campaigns, or third-party boosting",
+    "li3": "The play-request demo only covers seeds, challenges, co-op, and on-stream requests — not rank boosting",
+    "li4": "Avatars stay as text or outbound links to avoid hosting images without permission",
+    "li5": "Browsing is free for now; paid memberships would be announced separately",
+    "dataNotePrefix": "Data: edit",
+    "dataNoteSuffix": "then rebuild or refresh the dev server."
+  },
+  "inboxPage": {
+    "title": "Pending updates",
+    "introPrefix": "Pulled via",
+    "introMid": "from RSS. After review, copy them into the artist's",
+    "introSuffix": ".",
+    "lastSync": "Last sync: ",
+    "emptyPrefix": "Nothing pending. Run this from the project root:",
+    "starPage": "Artist page →",
+    "openSource": "Open source ↗",
+    "mergeHintPrefix": "After approval: copy into",
+    "mergeHintSuffix": "events, then mark this item merged or delete it.",
+    "workflowTitle": "Workflow",
+    "step1": "Configure content/rss-feeds.json (Weibo UID / RSSHub URL)",
+    "step2": "Run npm run sync:inbox",
+    "step3": "Review here → write into the star JSON → mark merged",
+    "step4": "git commit and push so published events go live"
+  },
+  "aiPage": {
+    "title": "Hybrid AI assistant",
+    "introPrefix": "Notes stay in this browser. Local dev defaults to",
+    "introSuffix": "; production or a missing Ollama falls back to the cloud.",
+    "loading": "Loading local notes…",
+    "notes": "Local notes",
+    "newNote": "New",
+    "deleteNote": "Delete",
+    "untitled": "Untitled note",
+    "newNoteTitle": "New note",
+    "sampleNote": "Sample note",
+    "persistHint": "Saved in this browser's localStorage, so refresh keeps them.",
+    "noteBody": "Note",
+    "placeholder": "Paste some text, or just write a few lines…",
+    "charUnit": "chars",
+    "taskType": "Task",
+    "strategy": "Routing",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "stop": "Stop",
+    "viaLocal": "Local Ollama",
+    "viaCloud": "Cloud",
+    "retryLocal": "Retry local-only",
+    "requestFailed": "Request failed",
+    "noStream": "No streaming response",
+    "networkHint": "Make sure the dev server is still running, then retry.",
+    "retryHint": "Please try again in a moment.",
+    "hintLocal": "local",
+    "hintCloud": "cloud",
+    "tasks": {
+      "summarize": "Summarize",
+      "polish": "Polish",
+      "continue": "Continue",
+      "translate": "Translate",
+      "tags": "Tags",
+      "analyze": "Deep analysis",
+      "refactor": "Refactor",
+      "chat": "Chat"
+    },
+    "strategies": {
+      "auto": "Auto route",
+      "only-local": "Local only",
+      "only-cloud": "Cloud only"
+    }
+  }
+}

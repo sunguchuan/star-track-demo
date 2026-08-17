@@ -1,6 +1,11 @@
 "use client";
 
+/**
+ * Hybrid AI chat panel
+ * Workflow: edit note → pick task/strategy → POST /api/ai/chat → consume SSE and render
+ */
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/lib/i18n/locale-context";
 import {
   createNote,
   loadNotesStore,
@@ -15,22 +20,19 @@ import type {
   StreamEvent,
 } from "@/lib/ai/types";
 
-const TASK_OPTIONS: { value: AiTaskType; label: string; hint: string }[] = [
-  { value: "summarize", label: "总结", hint: "本地" },
-  { value: "polish", label: "润色", hint: "本地" },
-  { value: "continue", label: "续写", hint: "本地" },
-  { value: "translate", label: "翻译", hint: "本地" },
-  { value: "tags", label: "标签", hint: "本地" },
-  { value: "analyze", label: "深度分析", hint: "云端" },
-  { value: "refactor", label: "重构建议", hint: "云端" },
-  { value: "chat", label: "自由问答", hint: "本地" },
+const TASK_VALUES: AiTaskType[] = [
+  "summarize",
+  "polish",
+  "continue",
+  "translate",
+  "tags",
+  "analyze",
+  "refactor",
+  "chat",
 ];
 
-const STRATEGY_OPTIONS: { value: AiStrategy; label: string }[] = [
-  { value: "auto", label: "自动路由" },
-  { value: "only-local", label: "仅本地" },
-  { value: "only-cloud", label: "仅云端" },
-];
+const CLOUD_TASKS = new Set<AiTaskType>(["analyze", "refactor"]);
+const STRATEGY_VALUES: AiStrategy[] = ["auto", "only-local", "only-cloud"];
 
 type Meta = {
   via: "local" | "cloud";
@@ -46,6 +48,8 @@ type UiError = {
 };
 
 export function AiChatPanel() {
+  const { t } = useLocale();
+  const copy = t.aiPage;
   const [hydrated, setHydrated] = useState(false);
   const [store, setStore] = useState<NotesStore | null>(null);
   const [taskType, setTaskType] = useState<AiTaskType>("summarize");
@@ -93,7 +97,7 @@ export function AiChatPanel() {
   }
 
   function addNote() {
-    const note = createNote({ title: "新笔记", body: "" });
+    const note = createNote({ title: copy.newNoteTitle, body: "" });
     patchStore((prev) => ({
       ...prev,
       activeId: note.id,
@@ -107,7 +111,7 @@ export function AiChatPanel() {
   function deleteActiveNote() {
     if (!store || !activeNote) return;
     if (store.notes.length <= 1) {
-      const fresh = createNote({ title: "新笔记", body: "" });
+      const fresh = createNote({ title: copy.newNoteTitle, body: "" });
       patchStore(() => ({
         version: 1,
         activeId: fresh.id,
@@ -132,10 +136,16 @@ export function AiChatPanel() {
 
   function updateBody(body: string) {
     if (!activeNote) return;
+    const autoTitles = new Set([
+      copy.untitled,
+      copy.newNoteTitle,
+      copy.sampleNote,
+      "未命名笔记",
+      "新笔记",
+      "示例笔记",
+    ]);
     const title =
-      activeNote.title === "未命名笔记" ||
-      activeNote.title === "新笔记" ||
-      activeNote.title === "示例笔记" ||
+      autoTitles.has(activeNote.title) ||
       activeNote.title === titleFromBody(activeNote.body)
         ? titleFromBody(body)
         : activeNote.title;
@@ -150,6 +160,10 @@ export function AiChatPanel() {
     }));
   }
 
+  /**
+   * UI → Gateway: POST /api/ai/chat, then consume SSE
+   * (meta shows route → delta drives typewriter → error/done)
+   */
   async function run(nextStrategy: AiStrategy = strategy) {
     if (!activeNote?.body.trim() || loading) return;
 
@@ -183,6 +197,7 @@ export function AiChatPanel() {
     };
 
     try {
+      // Call AI Gateway (server routes + talks to Ollama/cloud)
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,13 +213,14 @@ export function AiChatPanel() {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(data?.error ?? `请求失败 (${res.status})`);
+        throw new Error(data?.error ?? `${copy.requestFailed} (${res.status})`);
       }
 
       if (!res.body) {
-        throw new Error("无流式响应");
+        throw new Error(copy.noStream);
       }
 
+      // Parse SSE and update UI from data: events
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -259,13 +275,13 @@ export function AiChatPanel() {
         if (assembled) saveOutput(assembled);
         return;
       }
-      const message = err instanceof Error ? err.message : "请求失败";
+      const message = err instanceof Error ? err.message : copy.requestFailed;
       setError({
         message,
         hint:
           /fetch|network|Failed to fetch/i.test(message)
-            ? "请确认开发服务仍在运行，然后重试。"
-            : "请稍后重试。",
+            ? copy.networkHint
+            : copy.retryHint,
         retryable: true,
       });
     } finally {
@@ -285,7 +301,7 @@ export function AiChatPanel() {
 
   if (!hydrated || !store || !activeNote) {
     return (
-      <p className="text-sm text-zinc-500">正在加载本地笔记…</p>
+      <p className="text-sm text-zinc-500">{copy.loading}</p>
     );
   }
 
@@ -293,21 +309,21 @@ export function AiChatPanel() {
     <div className="space-y-5">
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium text-violet-950">本地笔记</p>
+          <p className="text-sm font-medium text-violet-950">{copy.notes}</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={addNote}
               className="rounded-lg bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-900 hover:bg-violet-200"
             >
-              新建
+              {copy.newNote}
             </button>
             <button
               type="button"
               onClick={deleteActiveNote}
               className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
             >
-              删除
+              {copy.deleteNote}
             </button>
           </div>
         </div>
@@ -330,7 +346,7 @@ export function AiChatPanel() {
           ))}
         </ul>
         <p className="text-xs text-zinc-500">
-          保存在本机浏览器 localStorage，刷新不丢。
+          {copy.persistHint}
         </p>
       </section>
 
@@ -339,7 +355,7 @@ export function AiChatPanel() {
           htmlFor="ai-note"
           className="text-sm font-medium text-violet-950"
         >
-          笔记内容
+          {copy.noteBody}
         </label>
         <textarea
           id="ai-note"
@@ -347,49 +363,51 @@ export function AiChatPanel() {
           onChange={(e) => updateBody(e.target.value)}
           rows={6}
           className="w-full resize-y rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-violet-950 shadow-sm outline-none ring-violet-400 focus:ring-2"
-          placeholder="粘贴一段文字，或随便写几句…"
+          placeholder={copy.placeholder}
         />
         <p className="text-xs text-zinc-500">
-          {activeNote.body.trim().length} 字
+          {activeNote.body.trim().length} {copy.charUnit}
         </p>
       </section>
 
       <section className="space-y-2">
-        <p className="text-sm font-medium text-violet-950">任务类型</p>
+        <p className="text-sm font-medium text-violet-950">{copy.taskType}</p>
         <div className="flex flex-wrap gap-2">
-          {TASK_OPTIONS.map((opt) => (
+          {TASK_VALUES.map((value) => (
             <button
-              key={opt.value}
+              key={value}
               type="button"
-              onClick={() => setTaskType(opt.value)}
+              onClick={() => setTaskType(value)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                taskType === opt.value
+                taskType === value
                   ? "bg-violet-700 text-white"
                   : "bg-violet-100 text-violet-900 hover:bg-violet-200"
               }`}
             >
-              {opt.label}
-              <span className="ml-1 opacity-70">·{opt.hint}</span>
+              {copy.tasks[value]}
+              <span className="ml-1 opacity-70">
+                ·{CLOUD_TASKS.has(value) ? copy.hintCloud : copy.hintLocal}
+              </span>
             </button>
           ))}
         </div>
       </section>
 
       <section className="space-y-2">
-        <p className="text-sm font-medium text-violet-950">路由策略</p>
+        <p className="text-sm font-medium text-violet-950">{copy.strategy}</p>
         <div className="flex flex-wrap gap-2">
-          {STRATEGY_OPTIONS.map((opt) => (
+          {STRATEGY_VALUES.map((value) => (
             <button
-              key={opt.value}
+              key={value}
               type="button"
-              onClick={() => setStrategy(opt.value)}
+              onClick={() => setStrategy(value)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                strategy === opt.value
+                strategy === value
                   ? "bg-fuchsia-700 text-white"
                   : "bg-fuchsia-100 text-fuchsia-950 hover:bg-fuchsia-200"
               }`}
             >
-              {opt.label}
+              {copy.strategies[value]}
             </button>
           ))}
         </div>
@@ -402,7 +420,7 @@ export function AiChatPanel() {
           disabled={loading || !activeNote.body.trim()}
           className="rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "生成中…" : "开始生成"}
+          {loading ? copy.generating : copy.generate}
         </button>
         {loading && (
           <button
@@ -410,7 +428,7 @@ export function AiChatPanel() {
             onClick={stop}
             className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm text-violet-800"
           >
-            停止
+            {copy.stop}
           </button>
         )}
       </div>
@@ -426,7 +444,7 @@ export function AiChatPanel() {
                     : "bg-sky-100 text-sky-800"
                 }`}
               >
-                via: {meta.via === "local" ? "本地 Ollama" : "云端"}
+                via: {meta.via === "local" ? copy.viaLocal : copy.viaCloud}
               </span>
               <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-800">
                 {meta.model}
@@ -452,7 +470,7 @@ export function AiChatPanel() {
                     onClick={retryLocal}
                     className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-violet-800 ring-1 ring-violet-200 hover:bg-violet-50"
                   >
-                    改用仅本地重试
+                    {copy.retryLocal}
                   </button>
                 )}
             </div>

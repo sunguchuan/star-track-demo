@@ -31,6 +31,17 @@ export function formatMonthNavLabel(
   return { year: String(year), month: `${month}月` };
 }
 
+export function formatWorkTypeLocalized(
+  type: string,
+  locale: Locale,
+): string {
+  const labels = dictionaries[locale].starsPage.workType as Record<
+    string,
+    string
+  >;
+  return labels[type] ?? type;
+}
+
 export function formatEventCount(count: number, locale: Locale): string {
   if (locale === "en") {
     return count === 1 ? "1 item" : `${count} items`;

@@ -1,3 +1,7 @@
+/**
+ * Hybrid AI types & contracts (UI → Gateway → Router → Ollama/Cloud).
+ * StreamEvent order: meta (route) → delta* (tokens) → error? → done
+ */
 export type AiTaskType =
   | "summarize"
   | "polish"

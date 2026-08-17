@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale } from "@/lib/i18n/locale-context";
 import { useState } from "react";
 import { EventTimeline } from "./event-timeline";
 import { WorkList } from "./work-list";
@@ -8,6 +9,7 @@ import type { Star } from "@/lib/types";
 type Tab = "events" | "works";
 
 export function StarDetailTabs({ star }: { star: Star }) {
+  const { t } = useLocale();
   const [tab, setTab] = useState<Tab>("events");
 
   return (
@@ -15,7 +17,7 @@ export function StarDetailTabs({ star }: { star: Star }) {
       <div
         className="mb-4 grid grid-cols-2 rounded-xl bg-violet-100/60 p-1"
         role="tablist"
-        aria-label="明星详情分类"
+        aria-label={t.starsPage.tabsAria}
       >
         <button
           type="button"
@@ -28,7 +30,7 @@ export function StarDetailTabs({ star }: { star: Star }) {
               : "text-violet-700/70"
           }`}
         >
-          动态
+          {t.starsPage.tabEvents}
         </button>
         <button
           type="button"
@@ -41,7 +43,7 @@ export function StarDetailTabs({ star }: { star: Star }) {
               : "text-violet-700/70"
           }`}
         >
-          作品
+          {t.starsPage.tabWorks}
         </button>
       </div>
       <div role="tabpanel">

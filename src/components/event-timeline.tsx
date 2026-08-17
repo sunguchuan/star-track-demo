@@ -1,3 +1,6 @@
+"use client";
+
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { FeedItem, StarEvent } from "@/lib/types";
 import { EventCard } from "./event-card";
 
@@ -10,12 +13,13 @@ export function EventTimeline({
   events: TimelineEvent[] | FeedItem[];
   showStar?: boolean;
 }) {
+  const { t } = useLocale();
   const sorted = [...events].sort((a, b) => b.date.localeCompare(a.date));
 
   if (sorted.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-8 text-center text-sm text-violet-700/70">
-        暂无动态，请在 content/stars 对应 JSON 中补充 events。
+        {t.home.emptyFeed}
       </p>
     );
   }

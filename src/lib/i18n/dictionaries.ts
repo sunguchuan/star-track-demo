@@ -1,87 +1,60 @@
+import en from "./messages/en.json";
+import zh from "./messages/zh.json";
+
 export type Locale = "zh" | "en";
 
 export const LOCALES: Locale[] = ["zh", "en"];
 
-export const LOCALE_STORAGE_KEY = "startrail-locale";
+export const DEFAULT_LOCALE: Locale = "en";
+
+export const LOCALE_STORAGE_KEY = "startrail-locale-v2";
 
 export const dictionaries = {
-  zh: {
-    brand: "星迹 Demo",
-    brandMark: "星",
-    nav: {
-      home: "首页",
-      stars: "明星",
-      inbox: "待审",
-      ai: "AI",
-      about: "关于",
-    },
-    langToggle: {
-      aria: "切换语言",
-      zh: "中文",
-      en: "EN",
-    },
-    home: {
-      title: "内娱艺人动态",
-      catalogPrefix: "共收录",
-      catalogSuffix: "位艺人",
-      allStars: "全部明星 →",
-      recentUpdates: "最近更新",
-      feedAria: "最近更新时间线",
-      emptyFeed: "暂无动态，请在 content/stars 对应 JSON 中补充 events。",
-      avatarStripAria: "快速进入艺人主页",
-      monthSuffix: "月",
-      eventCountSuffix: "条",
-      sourcePrefix: "来源：",
-    },
-    eventType: {
-      announcement: "官宣",
-      award: "获奖",
-      activity: "活动",
-      release: "发布",
-      other: "动态",
-    },
-  },
-  en: {
-    brand: "Star Trail Demo",
-    brandMark: "S",
-    nav: {
-      home: "Home",
-      stars: "Stars",
-      inbox: "Inbox",
-      ai: "AI",
-      about: "About",
-    },
-    langToggle: {
-      aria: "Switch language",
-      zh: "中文",
-      en: "EN",
-    },
-    home: {
-      title: "C-pop artist updates",
-      catalogPrefix: "Featuring",
-      catalogSuffix: "artists",
-      allStars: "All stars →",
-      recentUpdates: "Latest updates",
-      feedAria: "Latest updates timeline",
-      emptyFeed:
-        "No updates yet. Add events in the matching content/stars JSON files.",
-      avatarStripAria: "Quick links to artist pages",
-      monthSuffix: "",
-      eventCountSuffix: "",
-      sourcePrefix: "Source: ",
-    },
-    eventType: {
-      announcement: "Announcement",
-      award: "Award",
-      activity: "Event",
-      release: "Release",
-      other: "Update",
-    },
-  },
-} as const;
+  zh,
+  en,
+} as const satisfies Record<Locale, typeof zh>;
 
 export type Dictionary = (typeof dictionaries)[Locale];
 
 export function isLocale(value: unknown): value is Locale {
   return value === "zh" || value === "en";
+}
+
+export function isChineseLanguageTag(tag: string): boolean {
+  const normalized = tag.trim().toLowerCase().replace(/_/g, "-");
+  return normalized === "zh" || normalized.startsWith("zh-");
+}
+
+/** First tag in Accept-Language; anything non-Chinese falls back to English. */
+export function localeFromAcceptLanguage(
+  header: string | null | undefined,
+): Locale {
+  if (!header) return DEFAULT_LOCALE;
+  const first = header.split(",")[0]?.trim().split(";")[0] ?? "";
+  return isChineseLanguageTag(first) ? "zh" : DEFAULT_LOCALE;
+}
+
+export function getDictionary(locale: Locale): Dictionary {
+  return dictionaries[locale];
+}
+
+/** Read a nested message by key path, e.g. `play.errors.queue_full`. */
+export function getMessage(
+  dict: Dictionary,
+  path: string,
+  vars?: Record<string, string | number>,
+): string {
+  const parts = path.split(".");
+  let current: unknown = dict;
+  for (const part of parts) {
+    if (typeof current !== "object" || current === null || !(part in current)) {
+      return path;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  if (typeof current !== "string") return path;
+  if (!vars) return current;
+  return current.replace(/\{(\w+)\}/g, (_, name: string) =>
+    name in vars ? String(vars[name]) : `{${name}}`,
+  );
 }

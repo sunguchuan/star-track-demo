@@ -1,0 +1,290 @@
+{
+  "brand": "星迹 Demo",
+  "brandMark": "星",
+  "common": {
+    "backHome": "← 返回首页"
+  },
+  "nav": {
+    "home": "首页",
+    "stars": "明星",
+    "play": "点播",
+    "inbox": "待审",
+    "ai": "AI",
+    "about": "关于"
+  },
+  "langToggle": {
+    "aria": "切换语言",
+    "zh": "中文",
+    "en": "EN"
+  },
+  "home": {
+    "title": "内娱艺人动态",
+    "catalogPrefix": "共收录",
+    "catalogSuffix": "位艺人",
+    "allStars": "全部明星 →",
+    "recentUpdates": "最近更新",
+    "feedAria": "最近更新时间线",
+    "emptyFeed": "暂无动态，请在 content/stars 对应 JSON 中补充 events。",
+    "avatarStripAria": "快速进入艺人主页",
+    "monthSuffix": "月",
+    "eventCountSuffix": "条",
+    "sourcePrefix": "来源："
+  },
+  "eventType": {
+    "announcement": "官宣",
+    "award": "获奖",
+    "activity": "活动",
+    "release": "发布",
+    "other": "动态"
+  },
+  "play": {
+    "title": "点播大厅",
+    "subtitle": "参考 B 站帮我玩：商品、星尘、订单。只做种子 / 挑战 / 联机 / 直播点播。",
+    "backHome": "← 返回首页",
+    "navHall": "大厅",
+    "navOrders": "订单",
+    "navStudio": "工作台",
+    "ticketsLabel": "星尘",
+    "ticketUnit": "星尘",
+    "redeem": "兑换",
+    "ticketHint": "下单后星尘先冻结，不算花掉。超时未接、停播、主播取消会自动退回；开打后观众不能单方面退。",
+    "heldLabel": "冻结中",
+    "noAccountHint": "下单只冻结星尘，不立刻结算给主播。待接单 15 分钟、已接单 30 分钟未开打会自动退。",
+    "policyBanner": "不接上分、代练、排位代打，也不收集账号密码。主播用自己的号直播或双方各自登录联机。",
+    "filterAll": "全部",
+    "live": "直播中",
+    "offline": "未开播",
+    "emptyGoods": "这个分类暂时没有商品。",
+    "seedLabel": "种子",
+    "seedPlaceholder": "例如我的世界种子、或以撒的结合 seed",
+    "noteLabel": "备注",
+    "notePlaceholder": "想看的内容、挑战规则、游戏内昵称。不要填写密码。",
+    "placeOrder": "下单",
+    "privateTitle": "自定义下单",
+    "privateHint": "先选主播和游戏，再选这款游戏开放的类型。价格按游戏和类型分开，会显示在提交按钮上。",
+    "listedTitle": "固定套餐",
+    "hotPin": "最热快捷",
+    "hotAction": "点此填入表单",
+    "hotPinned": "已填入",
+    "streamerLabel": "主播",
+    "kindLabel": "类型",
+    "gameLabel": "游戏",
+    "gamePlaceholder": "我的世界 / 以撒的结合 / 星露谷物语等",
+    "placePrivate": "提交私单",
+    "loading": "读取本地订单…",
+    "emptyOrders": "还没有订单。去大厅挑一个种子或挑战吧。",
+    "privateTag": "私单",
+    "cancelOrder": "取消并退星尘",
+    "abortOrder": "中止并退星尘",
+    "goOffline": "模拟停播，退还排队订单",
+    "fundsHeld": "已冻结",
+    "fundsRefunded": "已退回",
+    "fundsReleased": "已结算给主播",
+    "actingAs": "当前主播身份（演示切换）",
+    "myGoods": "在售商品",
+    "incomingOrders": "收到的订单",
+    "emptyStudio": "还没有人下单。用观众身份去大厅下一单，再回到这里接单。",
+    "accept": "接单",
+    "reject": "拒绝并退星尘",
+    "startFulfill": "开始履约",
+    "complete": "标记完成",
+    "games": {
+      "Minecraft": "我的世界",
+      "The Binding of Isaac": "以撒的结合",
+      "Slay the Spire": "杀戮尖塔",
+      "Stardew Valley": "星露谷物语",
+      "viewer-pick": "由观众指定"
+    },
+    "streamers": {
+      "str-seed-sower": {
+        "name": "麦田种子手",
+        "bio": "我的世界生存开荒与种子挑战。只打公开种子，不用观众账号。"
+      },
+      "str-roguelike-lab": {
+        "name": "肉鸽实验室",
+        "bio": "以撒的结合、杀戮尖塔指定种子一局。直播拆招，不代打排位。"
+      },
+      "str-farm-night": {
+        "name": "晚风农场",
+        "bio": "星露谷物语联机种田。双方用自己的号加好友开档。"
+      }
+    },
+    "goods": {
+      "g-mc-seed-survive": {
+        "title": "我的世界指定种子生存开荒",
+        "details": "你提供种子，我在自己的档直播开荒约 2 小时：出生点、建筑、下矿。可旁观，不登录你的账号。"
+      },
+      "g-mc-challenge": {
+        "title": "我的世界限定规则挑战",
+        "details": "例如半心、只挖矿、速通村庄。规则写在下单备注里，我用自己的档直播完成。"
+      },
+      "g-isaac-seed": {
+        "title": "以撒的结合指定种子一局",
+        "details": "输入种子后开一局，边打边讲道具取舍。不打排位、不碰他人存档。"
+      },
+      "g-sts-seed": {
+        "title": "杀戮尖塔指定种子（可指定角色）",
+        "details": "按你给的种子开跑，默认普通或进阶由备注说明。全程自己的存档。"
+      },
+      "g-indie-onstream": {
+        "title": "直播点播一款单机 / 独立游戏",
+        "details": "点一款我能买到或已有的单机。不接竞技排位、不接登录你账号。"
+      },
+      "g-stardew-coop": {
+        "title": "星露谷物语联机种田一晚",
+        "details": "加好友开联机档，一起修农场。请填游戏内昵称；不要发账号密码。"
+      }
+    },
+    "kinds": {
+      "seed": "指定种子",
+      "challenge": "挑战",
+      "coop": "联机开黑",
+      "onstream": "直播点播"
+    },
+    "statuses": {
+      "pending_accept": "待接单",
+      "accepted": "已接单",
+      "in_progress": "履约中",
+      "completed": "已完成",
+      "cancelled": "已取消",
+      "rejected": "已拒绝"
+    },
+    "funds": {
+      "held": "已冻结",
+      "refunded": "已退回",
+      "released": "已结算"
+    },
+    "cancelReasons": {
+      "viewer": "观众取消",
+      "streamer": "主播取消",
+      "timeout": "超时自动退款",
+      "offline": "停播自动退款"
+    },
+    "slaDue": "超时将自动退款",
+    "slaRemaining": "{minutes} 分钟内未处理将自动退款",
+    "errors": {
+      "order_not_found": "找不到这笔订单。",
+      "cannot_refund_in_progress": "已经开始履约，不能单方面退款。主播中止或超时会自动退回。",
+      "invalid_transition": "当前状态不能执行这个操作。",
+      "tickets_insufficient": "星尘不足。可先兑换演示星尘。",
+      "queue_full": "这位主播排队已满，请稍后再下单或换一位，避免星尘被长时间冻结。",
+      "private_disabled": "这位主播暂不接自定义订单。",
+      "kind_not_offered": "这位主播不接该游戏的这个类型。",
+      "viewer_cancel_only": "观众只能取消尚未开始的订单。",
+      "not_own_order": "只能操作自己的订单。",
+      "wrong_streamer": "请切换到对应主播身份后再操作。",
+      "no_held_queue": "没有排队中的冻结订单。",
+      "tickets_capped": "演示星尘已达上限。",
+      "policy_boost": "不支持上分、代练、排位代打或登录他人账号。请改用指定种子、挑战、联机或直播点播。",
+      "kind_not_allowed": "只接受指定种子、挑战、联机或直播点播。",
+      "seed_required": "指定种子订单需要填写种子编号。",
+      "game_required": "请选择游戏。",
+      "details_required": "请补充这次想看的内容。"
+    }
+  },
+  "starsPage": {
+    "title": "全部明星",
+    "countPrefix": "共收录",
+    "countSuffix": "位艺人",
+    "latestPrefix": "最近：",
+    "birthday": "生日",
+    "birthplace": "籍贯",
+    "tabsAria": "明星详情分类",
+    "tabEvents": "动态",
+    "tabWorks": "作品",
+    "emptyWorks": "暂无作品记录。",
+    "link": "链接 ↗",
+    "sourcesTitle": "资料来源（维护用）",
+    "sourcesHint": "摘取动态与作品时可优先打开以下链接",
+    "maintainerNotes": "维护备忘：",
+    "sources": {
+      "weibo": "个人微博",
+      "studioWeibo": "工作室微博",
+      "douban": "豆瓣",
+      "neteaseMusic": "网易云音乐",
+      "qqMusic": "QQ 音乐",
+      "bilibili": "哔哩哔哩"
+    },
+    "workType": {
+      "film": "影视",
+      "music": "音乐",
+      "variety": "综艺",
+      "stage": "舞台"
+    }
+  },
+  "about": {
+    "title": "关于本站",
+    "kicker": "内测 Demo · 非官方粉丝站",
+    "p1": "「星迹 Demo」用于向周围朋友展示明星基本资料与动态时间线的原型，不代表任何艺人、经纪公司或官方粉丝组织。",
+    "p2": "本站信息由站长从公开、可核实的来源摘编整理，每条动态均标注出处链接。若您认为内容有误或侵犯权益，欢迎联系更正或删除。",
+    "li1": "不收录非公开的住址、行程、家庭隐私等信息",
+    "li2": "不组织集资、打榜、代刷等第三方平台操作",
+    "li3": "点播 Demo 仅支持指定种子、挑战、联机与直播点播，不提供上分或代练",
+    "li4": "图片与封面尽量使用文字头像或外链，避免未经授权托管",
+    "li5": "当前为免费浏览版；未来若上线会员功能，将另行说明",
+    "dataNotePrefix": "数据维护：编辑",
+    "dataNoteSuffix": "后重新构建或刷新开发服务器即可更新页面。"
+  },
+  "inboxPage": {
+    "title": "待审核动态",
+    "introPrefix": "由",
+    "introMid": "从 RSS 拉取。确认后再写入对应明星的",
+    "introSuffix": "。",
+    "lastSync": "上次同步：",
+    "emptyPrefix": "暂无待审核条目。在项目根目录运行",
+    "starPage": "艺人页 →",
+    "openSource": "打开原文核对 ↗",
+    "mergeHintPrefix": "通过后：复制到",
+    "mergeHintSuffix": "的 events，再将本条 status 改为 merged 或删除。",
+    "workflowTitle": "维护流程",
+    "step1": "配置 content/rss-feeds.json（微博 UID / RSSHub 地址）",
+    "step2": "运行 npm run sync:inbox",
+    "step3": "本页核对 → 写入明星 JSON → 标记 merged",
+    "step4": "git commit 后推送，站点才会更新已发布的 events"
+  },
+  "aiPage": {
+    "title": "混合 AI 助手",
+    "introPrefix": "笔记保存在本机浏览器。本机开发默认走",
+    "introSuffix": "；线上或 Ollama 不可用时自动改走云端。",
+    "loading": "正在加载本地笔记…",
+    "notes": "本地笔记",
+    "newNote": "新建",
+    "deleteNote": "删除",
+    "untitled": "未命名笔记",
+    "newNoteTitle": "新笔记",
+    "sampleNote": "示例笔记",
+    "persistHint": "保存在本机浏览器 localStorage，刷新不丢。",
+    "noteBody": "笔记内容",
+    "placeholder": "粘贴一段文字，或随便写几句…",
+    "charUnit": "字",
+    "taskType": "任务类型",
+    "strategy": "路由策略",
+    "generate": "开始生成",
+    "generating": "生成中…",
+    "stop": "停止",
+    "viaLocal": "本地 Ollama",
+    "viaCloud": "云端",
+    "retryLocal": "改用仅本地重试",
+    "requestFailed": "请求失败",
+    "noStream": "无流式响应",
+    "networkHint": "请确认开发服务仍在运行，然后重试。",
+    "retryHint": "请稍后重试。",
+    "hintLocal": "本地",
+    "hintCloud": "云端",
+    "tasks": {
+      "summarize": "总结",
+      "polish": "润色",
+      "continue": "续写",
+      "translate": "翻译",
+      "tags": "标签",
+      "analyze": "深度分析",
+      "refactor": "重构建议",
+      "chat": "自由问答"
+    },
+    "strategies": {
+      "auto": "自动路由",
+      "only-local": "仅本地",
+      "only-cloud": "仅云端"
+    }
+  }
+}

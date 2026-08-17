@@ -1,3 +1,13 @@
+/**
+ * Hybrid AI Gateway — POST /api/ai/chat
+ *
+ * Workflow:
+ * 1. Parse request (taskType / strategy / input)
+ * 2. Detect runtime + route (local Ollama vs cloud)
+ * 3. Build prompt messages
+ * 4. Stream model output over SSE; fall back local⇄cloud when needed
+ * 5. Push meta / delta / error / done events to the client
+ */
 import { streamCloudChat } from "@/lib/ai/cloud";
 import {
   shouldFallbackToCloud,
@@ -39,6 +49,7 @@ const TASK_TYPES = new Set<AiTaskType>([
 
 const STRATEGIES = new Set<AiStrategy>(["auto", "only-local", "only-cloud"]);
 
+/** Step 1 — Validate and normalize the JSON body from the client */
 function parseBody(raw: unknown): ChatRequestBody | null {
   if (!raw || typeof raw !== "object") return null;
   const body = raw as Record<string, unknown>;
@@ -71,6 +82,7 @@ function errorEvent(err: AiProviderError): StreamEvent {
   };
 }
 
+/** Step 4a — Call local Ollama or cloud API based on the route; yield tokens */
 async function* runModel(options: {
   target: "local" | "cloud";
   model: string;
@@ -78,6 +90,7 @@ async function* runModel(options: {
   signal: AbortSignal;
 }): AsyncGenerator<string> {
   if (options.target === "cloud") {
+    // Call cloud (OpenAI-compatible / Gemini)
     yield* streamCloudChat({
       model: options.model,
       messages: options.messages,
@@ -85,6 +98,7 @@ async function* runModel(options: {
     });
     return;
   }
+  // Call local Ollama
   yield* streamOllamaChat({
     model: options.model,
     messages: options.messages,
@@ -93,6 +107,7 @@ async function* runModel(options: {
 }
 
 export async function POST(request: Request) {
+  // --- Step 1: parse request ---
   let json: unknown;
   try {
     json = await request.json();
@@ -105,6 +120,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "input 不能为空" }, { status: 400 });
   }
 
+  // --- Step 2: detect env + resolve local vs cloud ---
   const taskType = body.taskType ?? "chat";
   const strategy = body.strategy ?? "auto";
   const cloudAvailable = isCloudConfigured();
@@ -117,8 +133,10 @@ export async function POST(request: Request) {
     localRuntime,
   });
 
+  // --- Step 3: build prompt framework (system + history + user) ---
   const messages = buildMessages(taskType, body.input.trim(), body.messages);
 
+  // --- Step 4–5: stream SSE events to the client ---
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -130,6 +148,7 @@ export async function POST(request: Request) {
       let model = decision.model;
       let reason = decision.reason;
 
+      // Tell the client which provider/model this request will use
       push({ type: "meta", via, model, reason });
 
       // Hosted without Key: fail clearly — never attempt Ollama on the server.
@@ -156,6 +175,7 @@ export async function POST(request: Request) {
 
       try {
         try {
+          // Happy path: stream tokens as delta events
           for await (const text of runModel({
             target: via,
             model,
@@ -168,7 +188,7 @@ export async function POST(request: Request) {
         } catch (err) {
           const providerErr = toProviderError(err, via);
 
-          // Local unreachable → cloud (any strategy, if Key present)
+          // Fallback: Ollama unavailable → switch to cloud
           if (
             via === "local" &&
             localRuntime &&
@@ -199,7 +219,7 @@ export async function POST(request: Request) {
               push({ type: "delta", text });
             }
           } else if (
-            // Cloud quota/rate-limit → local (only when local runtime makes sense)
+            // Fallback: cloud quota/rate-limit → degrade to local (local runtime only)
             via === "cloud" &&
             localRuntime &&
             strategy === "auto" &&

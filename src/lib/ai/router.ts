@@ -10,26 +10,40 @@ import {
 const LOCAL_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:latest";
 const CLOUD_MODEL = process.env.CLOUD_MODEL ?? "gpt-4.1-mini";
 
+const decision = (
+  target: RouteDecision["target"],
+  reason: string,
+): RouteDecision => ({
+  target,
+  reason,
+  model: target === "local" ? LOCAL_MODEL : CLOUD_MODEL,
+});
+
 export function isCloudConfigured(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
 /**
- * Whether this server process is likely able to reach a local Ollama.
- * Vercel / hosted runtimes cannot; local `next dev` / `next start` can.
- * Override with AI_FORCE_CLOUD=1 or AI_FORCE_LOCAL=1.
+ * Step 2a — Runtime check: can this process reach local Ollama?
+ * Hosted platforms (e.g. Vercel) always return false unless AI_FORCE_LOCAL=1.
  */
 export function isLocalAiRuntime(): boolean {
   if (process.env.AI_FORCE_CLOUD === "1") return false;
   if (process.env.AI_FORCE_LOCAL === "1") return true;
-  // Vercel sets VERCEL=1; also treat other common hosts as non-local.
-  if (process.env.VERCEL === "1") return false;
-  if (process.env.VERCEL_ENV) return false;
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return false;
-  if (process.env.NETLIFY === "true") return false;
-  return true;
+
+  const hosted =
+    process.env.VERCEL === "1" ||
+    Boolean(process.env.VERCEL_ENV) ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    process.env.NETLIFY === "true";
+
+  return !hosted;
 }
 
+/**
+ * Step 2b — Route decision: pick local or cloud from strategy / task / runtime.
+ * Hosted runtimes always use cloud — never point at the visitor's Ollama.
+ */
 export function resolveRoute(options: {
   taskType: AiTaskType;
   strategy: AiStrategy;
@@ -45,88 +59,58 @@ export function resolveRoute(options: {
     localRuntime = isLocalAiRuntime(),
   } = options;
 
-  // Hosted runtimes can never reach the visitor's Ollama — never pick local.
+  // Non-local runtime: always cloud
   if (!localRuntime) {
-    if (cloudAvailable) {
-      return {
-        target: "cloud",
-        reason:
-          strategy === "only-local"
-            ? "线上环境无法连接本机 Ollama，已自动改走云端"
-            : "检测到非本机运行环境，已改走云端",
-        model: CLOUD_MODEL,
-      };
-    }
-    return {
-      target: "cloud",
-      reason: "线上环境未配置 OPENAI_API_KEY，无法使用本机 Ollama",
-      model: CLOUD_MODEL,
-    };
+    return decision(
+      "cloud",
+      cloudAvailable
+        ? strategy === "only-local"
+          ? "线上环境无法连接本机 Ollama，已自动改走云端"
+          : "检测到非本机运行环境，已改走云端"
+        : "线上环境未配置 OPENAI_API_KEY，无法使用本机 Ollama",
+    );
   }
 
-  if (strategy === "only-local") {
-    return {
-      target: "local",
-      reason: "用户强制仅本地",
-      model: LOCAL_MODEL,
-    };
-  }
+  switch (strategy) {
+    case "only-local":
+      return decision("local", "用户强制仅本地");
 
-  if (strategy === "only-cloud") {
-    if (!cloudAvailable) {
-      return {
-        target: "local",
-        reason: "强制云端但未配置 OPENAI_API_KEY，已降级本地",
-        model: LOCAL_MODEL,
-      };
-    }
-    return {
-      target: "cloud",
-      reason: "用户强制仅云端",
-      model: CLOUD_MODEL,
-    };
-  }
+    case "only-cloud":
+      return cloudAvailable
+        ? decision("cloud", "用户强制仅云端")
+        : decision("local", "强制云端但未配置 OPENAI_API_KEY，已降级本地");
 
-  // auto (local runtime)
-  if ((CLOUD_TASKS as readonly string[]).includes(taskType)) {
-    if (!cloudAvailable) {
-      return {
-        target: "local",
-        reason: `任务「${taskType}」倾向云端，但未配置 Key，已降级本地`,
-        model: LOCAL_MODEL,
-      };
-    }
-    return {
-      target: "cloud",
-      reason: `任务「${taskType}」走云端`,
-      model: CLOUD_MODEL,
-    };
-  }
+    case "auto":
+    default:
+      // Deep analysis / refactor → prefer cloud
+      if (CLOUD_TASKS.includes(taskType)) {
+        return cloudAvailable
+          ? decision("cloud", `任务「${taskType}」走云端`)
+          : decision(
+              "local",
+              `任务「${taskType}」倾向云端，但未配置 Key，已降级本地`,
+            );
+      }
 
-  if (
-    inputLength >= LONG_INPUT_CHARS &&
-    (LOCAL_TASKS as readonly string[]).includes(taskType)
-  ) {
-    if (cloudAvailable) {
-      return {
-        target: "cloud",
-        reason: `输入较长（≥${LONG_INPUT_CHARS} 字），自动切云端`,
-        model: CLOUD_MODEL,
-      };
-    }
-  }
+      // Long input → switch to cloud
+      if (
+        cloudAvailable &&
+        inputLength >= LONG_INPUT_CHARS &&
+        LOCAL_TASKS.includes(taskType)
+      ) {
+        return decision(
+          "cloud",
+          `输入较长（≥${LONG_INPUT_CHARS} 字），自动切云端`,
+        );
+      }
 
-  return {
-    target: "local",
-    reason: `任务「${taskType}」走本地（省成本/隐私）`,
-    model: LOCAL_MODEL,
-  };
+      // Default: local (cost / privacy)
+      return decision(
+        "local",
+        `任务「${taskType}」走本地（省成本/隐私）`,
+      );
+  }
 }
 
-export function getLocalModel() {
-  return LOCAL_MODEL;
-}
-
-export function getCloudModel() {
-  return CLOUD_MODEL;
-}
+export const getLocalModel = () => LOCAL_MODEL;
+export const getCloudModel = () => CLOUD_MODEL;

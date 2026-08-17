@@ -13,7 +13,10 @@ type OpenAiStreamChunk = {
   error?: { message?: string; code?: string; type?: string };
 };
 
-/** Stream from an OpenAI-compatible chat completions API. */
+/**
+ * Call cloud — OpenAI-compatible chat/completions (incl. Gemini OpenAI layer).
+ * Parse SSE `data:` lines and yield delta.content.
+ */
 export async function* streamCloudChat(options: {
   model: string;
   messages: ChatMessage[];
@@ -30,6 +33,7 @@ export async function* streamCloudChat(options: {
 
   const { model, messages, signal } = options;
 
+  // Start streaming request
   let res: Response;
   try {
     res = await fetch(`${CLOUD_BASE}/chat/completions`, {
@@ -62,6 +66,7 @@ export async function* streamCloudChat(options: {
     throw toProviderError(new Error("云端未返回流式响应体"), "cloud");
   }
 
+  // Read SSE: data: {...} / data: [DONE]
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

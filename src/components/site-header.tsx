@@ -37,6 +37,12 @@ export function SiteHeader() {
               {t.nav.stars}
             </Link>
             <Link
+              href="/play"
+              className="shrink-0 text-violet-900/70 transition-colors hover:text-violet-900"
+            >
+              {t.nav.play}
+            </Link>
+            <Link
               href="/inbox"
               className="shrink-0 text-violet-900/70 transition-colors hover:text-violet-900"
             >

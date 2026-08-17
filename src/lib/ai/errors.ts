@@ -1,3 +1,7 @@
+/**
+ * Normalize raw Ollama / cloud errors into AiProviderError
+ * so the Gateway can decide fallbacks (quota → local, ollama_offline → cloud).
+ */
 export type AiErrorCode =
   | "quota_exhausted"
   | "rate_limited"

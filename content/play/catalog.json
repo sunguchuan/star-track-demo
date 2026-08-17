@@ -1,0 +1,132 @@
+{
+  "streamers": [
+    {
+      "id": "str-seed-sower",
+      "slug": "seed-sower",
+      "name": "麦田种子手",
+      "bio": "我的世界生存开荒与种子挑战。只打公开种子，不用观众账号。",
+      "live": true,
+      "acceptsPrivateOrders": true,
+      "offers": [
+        {
+          "game": "Minecraft",
+          "kindPrices": {
+            "seed": 20,
+            "challenge": 16,
+            "onstream": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "str-roguelike-lab",
+      "slug": "roguelike-lab",
+      "name": "肉鸽实验室",
+      "bio": "以撒的结合、杀戮尖塔指定种子一局。直播拆招，不代打排位。",
+      "live": true,
+      "acceptsPrivateOrders": true,
+      "offers": [
+        {
+          "game": "The Binding of Isaac",
+          "kindPrices": {
+            "seed": 10,
+            "challenge": 14
+          }
+        },
+        {
+          "game": "Slay the Spire",
+          "kindPrices": {
+            "seed": 12,
+            "onstream": 14
+          }
+        },
+        {
+          "game": "viewer-pick",
+          "kindPrices": {
+            "onstream": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "str-farm-night",
+      "slug": "farm-night",
+      "name": "晚风农场",
+      "bio": "星露谷物语联机种田。双方用自己的号加好友开档。",
+      "live": false,
+      "acceptsPrivateOrders": true,
+      "offers": [
+        {
+          "game": "Stardew Valley",
+          "kindPrices": {
+            "coop": 16,
+            "challenge": 12,
+            "onstream": 10
+          }
+        }
+      ]
+    }
+  ],
+  "goods": [
+    {
+      "id": "g-mc-seed-survive",
+      "streamerId": "str-seed-sower",
+      "kind": "seed",
+      "title": "我的世界指定种子生存开荒",
+      "game": "Minecraft",
+      "priceTickets": 20,
+      "details": "你提供种子，我在自己的档直播开荒约 2 小时：出生点、建筑、下矿。可旁观，不登录你的账号。",
+      "listed": true
+    },
+    {
+      "id": "g-mc-challenge",
+      "streamerId": "str-seed-sower",
+      "kind": "challenge",
+      "title": "我的世界限定规则挑战",
+      "game": "Minecraft",
+      "priceTickets": 16,
+      "details": "例如半心、只挖矿、速通村庄。规则写在下单备注里，我用自己的档直播完成。",
+      "listed": true
+    },
+    {
+      "id": "g-isaac-seed",
+      "streamerId": "str-roguelike-lab",
+      "kind": "seed",
+      "title": "以撒的结合指定种子一局",
+      "game": "The Binding of Isaac",
+      "priceTickets": 10,
+      "details": "输入种子后开一局，边打边讲道具取舍。不打排位、不碰他人存档。",
+      "listed": true
+    },
+    {
+      "id": "g-sts-seed",
+      "streamerId": "str-roguelike-lab",
+      "kind": "seed",
+      "title": "杀戮尖塔指定种子（可指定角色）",
+      "game": "Slay the Spire",
+      "priceTickets": 12,
+      "details": "按你给的种子开跑，默认普通或进阶由备注说明。全程自己的存档。",
+      "listed": true
+    },
+    {
+      "id": "g-indie-onstream",
+      "streamerId": "str-roguelike-lab",
+      "kind": "onstream",
+      "title": "直播点播一款单机 / 独立游戏",
+      "game": "viewer-pick",
+      "priceTickets": 14,
+      "details": "点一款我能买到或已有的单机。不接竞技排位、不接登录你账号。",
+      "listed": true
+    },
+    {
+      "id": "g-stardew-coop",
+      "streamerId": "str-farm-night",
+      "kind": "coop",
+      "title": "星露谷物语联机种田一晚",
+      "game": "Stardew Valley",
+      "priceTickets": 16,
+      "details": "加好友开联机档，一起修农场。请填游戏内昵称；不要发账号密码。",
+      "listed": true
+    }
+  ]
+}

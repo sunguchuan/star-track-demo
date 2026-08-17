@@ -10,7 +10,9 @@ import {
   type ReactNode,
 } from "react";
 import {
+  DEFAULT_LOCALE,
   dictionaries,
+  isChineseLanguageTag,
   isLocale,
   LOCALE_STORAGE_KEY,
   type Dictionary,
@@ -26,42 +28,62 @@ type LocaleContextValue = {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-function readStoredLocale(): Locale {
-  if (typeof window === "undefined") return "zh";
+function detectBrowserLocale(): Locale {
+  if (typeof navigator === "undefined") return DEFAULT_LOCALE;
+  const primary = navigator.language || navigator.languages?.[0] || "";
+  return isChineseLanguageTag(primary) ? "zh" : DEFAULT_LOCALE;
+}
+
+function readStoredLocale(): Locale | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY);
     if (isLocale(raw)) return raw;
   } catch {
     // ignore
   }
-  return "zh";
+  return null;
 }
 
-export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("zh");
+function persistLocale(locale: Locale) {
+  try {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+  } catch {
+    // ignore
+  }
+}
+
+export function LocaleProvider({
+  children,
+  initialLocale = DEFAULT_LOCALE,
+}: {
+  children: ReactNode;
+  initialLocale?: Locale;
+}) {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setLocaleState(readStoredLocale());
+    setLocaleState(readStoredLocale() ?? detectBrowserLocale());
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
-    try {
-      window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-    } catch {
-      // ignore
-    }
   }, [hydrated, locale]);
 
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
+    persistLocale(next);
   }, []);
 
   const toggleLocale = useCallback(() => {
-    setLocaleState((prev) => (prev === "zh" ? "en" : "zh"));
+    setLocaleState((prev) => {
+      const next = prev === "zh" ? "en" : "zh";
+      persistLocale(next);
+      return next;
+    });
   }, []);
 
   const value = useMemo<LocaleContextValue>(
