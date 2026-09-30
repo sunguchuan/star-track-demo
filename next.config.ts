@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  // node:sqlite is a Node built-in used by the FAB demo DB layer
+  serverExternalPackages: [],
 };
 
 export default nextConfig;

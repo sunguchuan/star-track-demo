@@ -2,6 +2,12 @@ import {
   httpErrorToProviderError,
   toProviderError,
 } from "./errors";
+import type {
+  ChatCompletionMessage,
+  ChatCompletionResult,
+  OpenAiTool,
+  ToolCallRequest,
+} from "./tools/types";
 import type { ChatMessage } from "./types";
 
 const CLOUD_BASE =
@@ -11,6 +17,22 @@ const CLOUD_BASE =
 type OpenAiStreamChunk = {
   choices?: Array<{ delta?: { content?: string } }>;
   error?: { message?: string; code?: string; type?: string };
+};
+
+type OpenAiCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+        thought_signature?: string;
+      }>;
+    };
+    finish_reason?: string;
+  }>;
+  error?: { message?: string };
 };
 
 /**
@@ -112,4 +134,97 @@ export async function* streamCloudChat(options: {
   } catch (err) {
     throw toProviderError(err, "cloud");
   }
+}
+
+/**
+ * Non-streaming cloud completion — used by the tool-calling agent loop.
+ */
+export async function completeCloudChat(options: {
+  model: string;
+  messages: ChatCompletionMessage[];
+  tools?: OpenAiTool[];
+  toolChoice?: "auto" | "none" | "required";
+  signal?: AbortSignal;
+}): Promise<ChatCompletionResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw httpErrorToProviderError({
+      provider: "cloud",
+      status: 401,
+      detail: "未配置 OPENAI_API_KEY",
+    });
+  }
+
+  const { model, messages, tools, toolChoice, signal } = options;
+
+  let res: Response;
+  try {
+    res = await fetch(`${CLOUD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        ...(tools?.length
+          ? {
+              tools,
+              tool_choice: toolChoice ?? "auto",
+            }
+          : {}),
+      }),
+      signal,
+    });
+  } catch (err) {
+    throw toProviderError(err, "cloud");
+  }
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw httpErrorToProviderError({
+      provider: "cloud",
+      status: res.status,
+      detail: detail || res.statusText,
+    });
+  }
+
+  let data: OpenAiCompletionResponse;
+  try {
+    data = (await res.json()) as OpenAiCompletionResponse;
+  } catch (err) {
+    throw toProviderError(err, "cloud");
+  }
+
+  if (data.error?.message) {
+    throw httpErrorToProviderError({
+      provider: "cloud",
+      status: 400,
+      detail: data.error.message,
+    });
+  }
+
+  const message = data.choices?.[0]?.message;
+  const toolCalls: ToolCallRequest[] = [];
+  for (const [index, call] of (message?.tool_calls ?? []).entries()) {
+    const name = call.function?.name?.trim();
+    if (!name) continue;
+    const entry: ToolCallRequest = {
+      id: call.id?.trim() || `call_${index}_${name}`,
+      name,
+      arguments: call.function?.arguments ?? "{}",
+    };
+    if (call.thought_signature) {
+      entry.thoughtSignature = call.thought_signature;
+    }
+    toolCalls.push(entry);
+  }
+
+  return {
+    content: message?.content ?? null,
+    toolCalls,
+    finishReason: data.choices?.[0]?.finish_reason,
+  };
 }

@@ -10,6 +10,7 @@
     "play": "点播",
     "inbox": "待审",
     "ai": "AI",
+    "fab": "产线",
     "about": "关于"
   },
   "langToggle": {
@@ -271,6 +272,16 @@
     "retryHint": "请稍后重试。",
     "hintLocal": "本地",
     "hintCloud": "云端",
+    "toolCalls": "工具调用",
+    "toolOk": "成功",
+    "toolFail": "失败",
+    "investigateHint": "例如：Etch Chamber B7 良率下滑，帮我查告警并给 Action Plan",
+    "feedbackPrompt": "这次回答有帮助吗？",
+    "feedbackUp": "有帮助",
+    "feedbackDown": "没帮助",
+    "feedbackSaved": "已记录反馈，谢谢",
+    "feedbackFailed": "反馈保存失败",
+    "viewRuns": "运行记录与指标 →",
     "tasks": {
       "summarize": "总结",
       "polish": "润色",
@@ -279,6 +290,7 @@
       "tags": "标签",
       "analyze": "深度分析",
       "refactor": "重构建议",
+      "investigate": "产线排查",
       "chat": "自由问答"
     },
     "strategies": {
@@ -286,5 +298,38 @@
       "only-local": "仅本地",
       "only-cloud": "仅云端"
     }
+  },
+  "aiRuns": {
+    "title": "AI 运行看板",
+    "intro": "每次调用 /api/ai/chat 都会记录：走本地还是云端、是否降级、首字延迟、总耗时、工具调用和用户反馈。统计基于最近 500 次运行。",
+    "backToAi": "← 返回 AI 助手",
+    "empty": "还没有运行记录。去 AI 助手生成一次试试。",
+    "totalRuns": "运行次数",
+    "localShare": "本地占比",
+    "fallbackRate": "降级率",
+    "errorRate": "失败率",
+    "ttftP50": "首字延迟 P50",
+    "satisfaction": "满意度",
+    "noFeedback": "暂无反馈",
+    "byRoute": "按路由",
+    "colRoute": "路由",
+    "colRuns": "成功次数",
+    "colTtft": "首字 P50 / P95",
+    "colTotal": "总耗时 P50 / P95",
+    "latencyNote": "延迟只统计成功的运行，失败和中途停止不计入。",
+    "byTask": "按任务",
+    "failedSuffix": "次失败",
+    "recent": "最近运行",
+    "viaLocal": "本地",
+    "viaCloud": "云端",
+    "statusOk": "成功",
+    "statusError": "失败",
+    "statusAborted": "已停止",
+    "fellBack": "已降级",
+    "tools": "工具",
+    "ttft": "首字",
+    "total": "总耗时",
+    "feedbackUp": "有帮助",
+    "feedbackDown": "没帮助"
   }
 }

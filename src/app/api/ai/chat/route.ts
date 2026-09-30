@@ -4,10 +4,12 @@
  * Workflow:
  * 1. Parse request (taskType / strategy / input)
  * 2. Detect runtime + route (local Ollama vs cloud)
- * 3. Build prompt messages
+ * 3. Build prompt messages (or run investigate agent with tools)
  * 4. Stream model output over SSE; fall back local⇄cloud when needed
- * 5. Push meta / delta / error / done events to the client
+ * 5. Push run / meta / tool_* / delta / error / done events to the client
+ * 6. Record the run (route, fallback, latency, tools) for /ai/runs
  */
+import { randomUUID } from "crypto";
 import { streamCloudChat } from "@/lib/ai/cloud";
 import {
   shouldFallbackToCloud,
@@ -24,8 +26,10 @@ import {
   isLocalAiRuntime,
   resolveRoute,
 } from "@/lib/ai/router";
+import type { AiRunStatus } from "@/lib/ai/runs";
 import { createSseResponse, sseEncode } from "@/lib/ai/sse";
 import type {
+  AiRouteTarget,
   AiStrategy,
   AiTaskType,
   ChatMessage,
@@ -44,6 +48,7 @@ const TASK_TYPES = new Set<AiTaskType>([
   "tags",
   "analyze",
   "refactor",
+  "investigate",
   "chat",
 ]);
 
@@ -90,7 +95,6 @@ async function* runModel(options: {
   signal: AbortSignal;
 }): AsyncGenerator<string> {
   if (options.target === "cloud") {
-    // Call cloud (OpenAI-compatible / Gemini)
     yield* streamCloudChat({
       model: options.model,
       messages: options.messages,
@@ -98,7 +102,6 @@ async function* runModel(options: {
     });
     return;
   }
-  // Call local Ollama
   yield* streamOllamaChat({
     model: options.model,
     messages: options.messages,
@@ -106,8 +109,15 @@ async function* runModel(options: {
   });
 }
 
+/** Lazy so plain chat never loads node:sqlite (FAB tools) unless the agent runs. */
+async function* runInvestigateAgent(
+  options: Parameters<typeof import("@/lib/ai/agent").runInvestigateAgent>[0],
+): AsyncGenerator<StreamEvent> {
+  const agent = await import("@/lib/ai/agent");
+  yield* agent.runInvestigateAgent(options);
+}
+
 export async function POST(request: Request) {
-  // --- Step 1: parse request ---
   let json: unknown;
   try {
     json = await request.json();
@@ -120,7 +130,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "input 不能为空" }, { status: 400 });
   }
 
-  // --- Step 2: detect env + resolve local vs cloud ---
   const taskType = body.taskType ?? "chat";
   const strategy = body.strategy ?? "auto";
   const cloudAvailable = isCloudConfigured();
@@ -133,25 +142,80 @@ export async function POST(request: Request) {
     localRuntime,
   });
 
-  // --- Step 3: build prompt framework (system + history + user) ---
   const messages = buildMessages(taskType, body.input.trim(), body.messages);
+  const useAgent = taskType === "investigate";
+  const runId = randomUUID();
+  const startedAt = Date.now();
 
-  // --- Step 4–5: stream SSE events to the client ---
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let firstDeltaAt: number | null = null;
+      let outputChars = 0;
+      let toolCalls = 0;
+      let lastErrorCode: string | null = null;
+      let fellBack = false;
+
       const push = (event: StreamEvent) => {
-        controller.enqueue(encoder.encode(sseEncode(event)));
+        if (event.type === "delta") {
+          firstDeltaAt ??= Date.now();
+          outputChars += event.text.length;
+        } else if (event.type === "tool_call") {
+          toolCalls += 1;
+        } else if (event.type === "error") {
+          lastErrorCode = event.code ?? "unknown";
+        }
+        try {
+          controller.enqueue(encoder.encode(sseEncode(event)));
+        } catch {
+          // Client disconnected; keep going so the run is still recorded.
+        }
       };
 
       let via = decision.target;
       let model = decision.model;
       let reason = decision.reason;
+      let initialTarget: AiRouteTarget = via;
 
-      // Tell the client which provider/model this request will use
+      const finish = async () => {
+        const status: AiRunStatus = request.signal.aborted
+          ? "aborted"
+          : outputChars > 0
+            ? "ok"
+            : "error";
+        try {
+          const { recordRun } = await import("@/lib/ai/runs");
+          recordRun({
+            id: runId,
+            createdAt: new Date(startedAt).toISOString(),
+            taskType,
+            strategy,
+            initialTarget,
+            via,
+            model,
+            reason,
+            fellBack,
+            status,
+            errorCode: lastErrorCode,
+            ttftMs: firstDeltaAt == null ? null : firstDeltaAt - startedAt,
+            totalMs: Date.now() - startedAt,
+            inputChars: body.input.trim().length,
+            outputChars,
+            toolCalls,
+          });
+        } catch (err) {
+          console.error("[ai/chat] failed to record run", err);
+        }
+        try {
+          controller.close();
+        } catch {
+          // already closed by client cancel
+        }
+      };
+
+      push({ type: "run", id: runId });
       push({ type: "meta", via, model, reason });
 
-      // Hosted without Key: fail clearly — never attempt Ollama on the server.
       if (!localRuntime && !cloudAvailable) {
         push({
           type: "error",
@@ -161,34 +225,44 @@ export async function POST(request: Request) {
           retryable: false,
         });
         push({ type: "done" });
-        controller.close();
+        await finish();
         return;
       }
 
-      // Safety: never call local provider off local runtime.
       if (!localRuntime && via === "local") {
         via = "cloud";
         model = getCloudModel();
         reason = "线上环境已强制改走云端";
         push({ type: "meta", via, model, reason });
       }
+      initialTarget = via;
 
       try {
         try {
-          // Happy path: stream tokens as delta events
-          for await (const text of runModel({
-            target: via,
-            model,
-            messages,
-            signal: request.signal,
-          })) {
-            if (request.signal.aborted) break;
-            push({ type: "delta", text });
+          if (useAgent) {
+            for await (const event of runInvestigateAgent({
+              target: via,
+              model,
+              userInput: body.input.trim(),
+              signal: request.signal,
+            })) {
+              if (request.signal.aborted) break;
+              push(event);
+            }
+          } else {
+            for await (const text of runModel({
+              target: via,
+              model,
+              messages,
+              signal: request.signal,
+            })) {
+              if (request.signal.aborted) break;
+              push({ type: "delta", text });
+            }
           }
         } catch (err) {
           const providerErr = toProviderError(err, via);
 
-          // Fallback: Ollama unavailable → switch to cloud
           if (
             via === "local" &&
             localRuntime &&
@@ -204,22 +278,34 @@ export async function POST(request: Request) {
               retryable: true,
             });
 
+            fellBack = true;
             via = "cloud";
             model = cloudModel;
             reason = "本地不可用，已自动改走云端";
             push({ type: "meta", via, model, reason });
 
-            for await (const text of runModel({
-              target: "cloud",
-              model: cloudModel,
-              messages,
-              signal: request.signal,
-            })) {
-              if (request.signal.aborted) break;
-              push({ type: "delta", text });
+            if (useAgent) {
+              for await (const event of runInvestigateAgent({
+                target: "cloud",
+                model: cloudModel,
+                userInput: body.input.trim(),
+                signal: request.signal,
+              })) {
+                if (request.signal.aborted) break;
+                push(event);
+              }
+            } else {
+              for await (const text of runModel({
+                target: "cloud",
+                model: cloudModel,
+                messages,
+                signal: request.signal,
+              })) {
+                if (request.signal.aborted) break;
+                push({ type: "delta", text });
+              }
             }
           } else if (
-            // Fallback: cloud quota/rate-limit → degrade to local (local runtime only)
             via === "cloud" &&
             localRuntime &&
             strategy === "auto" &&
@@ -234,19 +320,32 @@ export async function POST(request: Request) {
               retryable: true,
             });
 
+            fellBack = true;
             via = "local";
             model = localModel;
             reason = `云端${providerErr.code === "quota_exhausted" ? "额度不足" : "限流"}，已自动降级本地`;
             push({ type: "meta", via, model, reason });
 
-            for await (const text of runModel({
-              target: "local",
-              model: localModel,
-              messages,
-              signal: request.signal,
-            })) {
-              if (request.signal.aborted) break;
-              push({ type: "delta", text });
+            if (useAgent) {
+              for await (const event of runInvestigateAgent({
+                target: "local",
+                model: localModel,
+                userInput: body.input.trim(),
+                signal: request.signal,
+              })) {
+                if (request.signal.aborted) break;
+                push(event);
+              }
+            } else {
+              for await (const text of runModel({
+                target: "local",
+                model: localModel,
+                messages,
+                signal: request.signal,
+              })) {
+                if (request.signal.aborted) break;
+                push({ type: "delta", text });
+              }
             }
           } else if (providerErr.code !== "aborted") {
             push(errorEvent(providerErr));
@@ -261,17 +360,22 @@ export async function POST(request: Request) {
         }
         push({ type: "done" });
       } finally {
-        controller.close();
+        await finish();
       }
     },
   });
 
   return createSseResponse(stream, {
     headers: {
-      "X-AI-Via": decision.target === "local" && !localRuntime ? "cloud" : decision.target,
+      "X-AI-Via":
+        decision.target === "local" && !localRuntime
+          ? "cloud"
+          : decision.target,
       "X-AI-Model": decision.model,
       "X-AI-Local-Runtime": localRuntime ? "1" : "0",
       "X-AI-Cloud-Configured": cloudAvailable ? "1" : "0",
+      "X-AI-Agent": useAgent ? "1" : "0",
+      "X-AI-Run-Id": runId,
     },
   });
 }

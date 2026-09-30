@@ -2,12 +2,16 @@
   "name": "my-first-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync:inbox": "node scripts/sync-inbox.mjs"
+    "sync:inbox": "node scripts/sync-inbox.mjs",
+    "seed:fab": "node scripts/seed-fab.mjs"
   },
   "dependencies": {
     "next": "16.2.6",

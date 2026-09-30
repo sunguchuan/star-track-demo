@@ -28,10 +28,15 @@ const TASK_VALUES: AiTaskType[] = [
   "tags",
   "analyze",
   "refactor",
+  "investigate",
   "chat",
 ];
 
-const CLOUD_TASKS = new Set<AiTaskType>(["analyze", "refactor"]);
+const CLOUD_TASKS = new Set<AiTaskType>([
+  "analyze",
+  "refactor",
+  "investigate",
+]);
 const STRATEGY_VALUES: AiStrategy[] = ["auto", "only-local", "only-cloud"];
 
 type Meta = {
@@ -47,6 +52,16 @@ type UiError = {
   retryable?: boolean;
 };
 
+type ToolTrace = {
+  id: string;
+  name: string;
+  arguments: string;
+  ok?: boolean;
+  preview?: string;
+};
+
+type FeedbackState = "idle" | "saving" | "up" | "down" | "failed";
+
 export function AiChatPanel() {
   const { t } = useLocale();
   const copy = t.aiPage;
@@ -57,6 +72,9 @@ export function AiChatPanel() {
   const [output, setOutput] = useState("");
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState<UiError | null>(null);
+  const [toolTraces, setToolTraces] = useState<ToolTrace[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>("idle");
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const skipPersist = useRef(true);
@@ -94,6 +112,9 @@ export function AiChatPanel() {
     setOutput(next.lastOutput ?? "");
     setMeta(null);
     setError(null);
+    setToolTraces([]);
+    setRunId(null);
+    setFeedback("idle");
   }
 
   function addNote() {
@@ -106,6 +127,9 @@ export function AiChatPanel() {
     setOutput("");
     setMeta(null);
     setError(null);
+    setToolTraces([]);
+    setRunId(null);
+    setFeedback("idle");
   }
 
   function deleteActiveNote() {
@@ -120,6 +144,9 @@ export function AiChatPanel() {
       setOutput("");
       setMeta(null);
       setError(null);
+      setToolTraces([]);
+      setRunId(null);
+      setFeedback("idle");
       return;
     }
 
@@ -132,6 +159,9 @@ export function AiChatPanel() {
     setOutput(remaining[0].lastOutput ?? "");
     setMeta(null);
     setError(null);
+    setToolTraces([]);
+    setRunId(null);
+    setFeedback("idle");
   }
 
   function updateBody(body: string) {
@@ -178,6 +208,9 @@ export function AiChatPanel() {
     setOutput("");
     setMeta(null);
     setError(null);
+    setToolTraces([]);
+    setRunId(null);
+    setFeedback("idle");
 
     let assembled = "";
 
@@ -244,12 +277,35 @@ export function AiChatPanel() {
             continue;
           }
 
-          if (event.type === "meta") {
+          if (event.type === "run") {
+            setRunId(event.id);
+          } else if (event.type === "meta") {
             setMeta({
               via: event.via,
               model: event.model,
               reason: event.reason,
             });
+          } else if (event.type === "tool_call") {
+            setToolTraces((prev) => [
+              ...prev.filter((t) => t.id !== event.id),
+              {
+                id: event.id,
+                name: event.name,
+                arguments: event.arguments,
+              },
+            ]);
+          } else if (event.type === "tool_result") {
+            setToolTraces((prev) =>
+              prev.map((t) =>
+                t.id === event.id
+                  ? {
+                      ...t,
+                      ok: event.ok,
+                      preview: event.preview,
+                    }
+                  : t,
+              ),
+            );
           } else if (event.type === "delta") {
             if (assembled.length === 0) {
               setError(null);
@@ -286,6 +342,21 @@ export function AiChatPanel() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sendFeedback(score: 1 | -1) {
+    if (!runId || feedback === "saving") return;
+    setFeedback("saving");
+    try {
+      const res = await fetch(`/api/ai/runs/${runId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ score }),
+      });
+      setFeedback(res.ok ? (score === 1 ? "up" : "down") : "failed");
+    } catch {
+      setFeedback("failed");
     }
   }
 
@@ -363,7 +434,11 @@ export function AiChatPanel() {
           onChange={(e) => updateBody(e.target.value)}
           rows={6}
           className="w-full resize-y rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-violet-950 shadow-sm outline-none ring-violet-400 focus:ring-2"
-          placeholder={copy.placeholder}
+          placeholder={
+            taskType === "investigate"
+              ? copy.investigateHint
+              : copy.placeholder
+          }
         />
         <p className="text-xs text-zinc-500">
           {activeNote.body.trim().length} {copy.charUnit}
@@ -433,7 +508,7 @@ export function AiChatPanel() {
         )}
       </div>
 
-      {(meta || error || output || loading) && (
+      {(meta || error || output || loading || toolTraces.length > 0) && (
         <section className="rounded-xl border border-violet-100 bg-white/80 p-4">
           {meta && (
             <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
@@ -450,6 +525,49 @@ export function AiChatPanel() {
                 {meta.model}
               </span>
               <span className="text-zinc-500">{meta.reason}</span>
+            </div>
+          )}
+
+          {toolTraces.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <p className="text-xs font-medium text-zinc-600">
+                {copy.toolCalls}
+              </p>
+              <ul className="space-y-2">
+                {toolTraces.map((trace) => (
+                  <li
+                    key={trace.id}
+                    className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-medium text-violet-900">
+                        {trace.name}
+                      </span>
+                      {trace.ok != null && (
+                        <span
+                          className={
+                            trace.ok
+                              ? "text-emerald-700"
+                              : "text-red-600"
+                          }
+                        >
+                          {trace.ok ? copy.toolOk : copy.toolFail}
+                        </span>
+                      )}
+                    </div>
+                    {trace.arguments && trace.arguments !== "{}" && (
+                      <p className="mt-1 font-mono text-[11px] text-zinc-500">
+                        {trace.arguments}
+                      </p>
+                    )}
+                    {trace.preview && (
+                      <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-zinc-600">
+                        {trace.preview}
+                      </pre>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -482,6 +600,37 @@ export function AiChatPanel() {
               <span className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-violet-500 align-middle" />
             )}
           </div>
+
+          {!loading && runId && output && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3 text-xs text-zinc-500">
+              {feedback === "up" || feedback === "down" ? (
+                <span>{copy.feedbackSaved}</span>
+              ) : (
+                <>
+                  <span>{copy.feedbackPrompt}</span>
+                  <button
+                    type="button"
+                    onClick={() => void sendFeedback(1)}
+                    disabled={feedback === "saving"}
+                    className="rounded-md bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    {copy.feedbackUp}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void sendFeedback(-1)}
+                    disabled={feedback === "saving"}
+                    className="rounded-md bg-zinc-50 px-2.5 py-1 font-medium text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100 disabled:opacity-50"
+                  >
+                    {copy.feedbackDown}
+                  </button>
+                  {feedback === "failed" && (
+                    <span className="text-red-600">{copy.feedbackFailed}</span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>

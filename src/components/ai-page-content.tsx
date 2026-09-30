@@ -22,6 +22,12 @@ export function AiPageContent() {
         <code className="rounded bg-violet-50 px-1 text-xs">gemma4</code>
         {t.aiPage.introSuffix}
       </p>
+      <Link
+        href="/ai/runs"
+        className="mt-2 inline-flex text-xs font-medium text-violet-700 hover:underline"
+      >
+        {t.aiPage.viewRuns}
+      </Link>
 
       <div className="mt-6">
         <AiChatPanel />

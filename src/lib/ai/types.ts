@@ -1,6 +1,6 @@
 /**
  * Hybrid AI types & contracts (UI → Gateway → Router → Ollama/Cloud).
- * StreamEvent order: meta (route) → delta* (tokens) → error? → done
+ * StreamEvent order: run → meta → tool_call* / tool_result* → delta* → error? → done
  */
 export type AiTaskType =
   | "summarize"
@@ -10,6 +10,7 @@ export type AiTaskType =
   | "tags"
   | "analyze"
   | "refactor"
+  | "investigate"
   | "chat";
 
 export type AiStrategy = "auto" | "only-local" | "only-cloud";
@@ -36,7 +37,21 @@ export type RouteDecision = {
 };
 
 export type StreamEvent =
+  | { type: "run"; id: string }
   | { type: "meta"; via: AiRouteTarget; model: string; reason: string }
+  | {
+      type: "tool_call";
+      id: string;
+      name: string;
+      arguments: string;
+    }
+  | {
+      type: "tool_result";
+      id: string;
+      name: string;
+      ok: boolean;
+      preview: string;
+    }
   | { type: "delta"; text: string }
   | {
       type: "error";
@@ -59,6 +74,7 @@ export const LOCAL_TASKS: readonly AiTaskType[] = [
 export const CLOUD_TASKS: readonly AiTaskType[] = [
   "analyze",
   "refactor",
+  "investigate",
 ] as const;
 
 /** ~2k Chinese chars ≈ prefer cloud for long input under auto. */

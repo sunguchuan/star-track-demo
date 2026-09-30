@@ -10,6 +10,7 @@
     "play": "Play",
     "inbox": "Inbox",
     "ai": "AI",
+    "fab": "FAB",
     "about": "About"
   },
   "langToggle": {
@@ -271,6 +272,16 @@
     "retryHint": "Please try again in a moment.",
     "hintLocal": "local",
     "hintCloud": "cloud",
+    "toolCalls": "Tool calls",
+    "toolOk": "ok",
+    "toolFail": "failed",
+    "investigateHint": "e.g. Etch Chamber B7 yield drop — check alerts and draft an Action Plan",
+    "feedbackPrompt": "Was this helpful?",
+    "feedbackUp": "Helpful",
+    "feedbackDown": "Not helpful",
+    "feedbackSaved": "Feedback saved, thanks",
+    "feedbackFailed": "Could not save feedback",
+    "viewRuns": "Runs & metrics →",
     "tasks": {
       "summarize": "Summarize",
       "polish": "Polish",
@@ -279,6 +290,7 @@
       "tags": "Tags",
       "analyze": "Deep analysis",
       "refactor": "Refactor",
+      "investigate": "Fab investigate",
       "chat": "Chat"
     },
     "strategies": {
@@ -286,5 +298,38 @@
       "only-local": "Local only",
       "only-cloud": "Cloud only"
     }
+  },
+  "aiRuns": {
+    "title": "AI runs",
+    "intro": "Every call to /api/ai/chat is logged: local vs cloud, whether it fell back, time to first token, total latency, tool calls, and user feedback. Stats cover the latest 500 runs.",
+    "backToAi": "← Back to AI assistant",
+    "empty": "No runs yet. Generate something in the AI assistant first.",
+    "totalRuns": "Runs",
+    "localShare": "Local share",
+    "fallbackRate": "Fallback rate",
+    "errorRate": "Error rate",
+    "ttftP50": "First token P50",
+    "satisfaction": "Helpful",
+    "noFeedback": "No feedback yet",
+    "byRoute": "By route",
+    "colRoute": "Route",
+    "colRuns": "Successful",
+    "colTtft": "First token P50 / P95",
+    "colTotal": "Total P50 / P95",
+    "latencyNote": "Latency counts successful runs only; errors and stopped runs are excluded.",
+    "byTask": "By task",
+    "failedSuffix": "failed",
+    "recent": "Recent runs",
+    "viaLocal": "Local",
+    "viaCloud": "Cloud",
+    "statusOk": "ok",
+    "statusError": "error",
+    "statusAborted": "stopped",
+    "fellBack": "fell back",
+    "tools": "tools",
+    "ttft": "first token",
+    "total": "total",
+    "feedbackUp": "helpful",
+    "feedbackDown": "not helpful"
   }
 }
