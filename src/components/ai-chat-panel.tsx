@@ -14,12 +14,11 @@ import {
   type NotesStore,
   type StoredNote,
 } from "@/lib/ai/notes-storage";
-import type {
-  AiStrategy,
-  AiTaskType,
-  StreamEvent,
-} from "@/lib/ai/types";
+import type { AiStrategy, AiTaskType } from "@/lib/ai/types";
+import { useAiStream } from "@/lib/ai/use-ai-stream";
+import { AiRunResult } from "@/components/ai-run-result";
 
+/** investigate lives on /fab (FabInvestigatePanel), next to the data it reads. */
 const TASK_VALUES: AiTaskType[] = [
   "summarize",
   "polish",
@@ -28,39 +27,11 @@ const TASK_VALUES: AiTaskType[] = [
   "tags",
   "analyze",
   "refactor",
-  "investigate",
   "chat",
 ];
 
-const CLOUD_TASKS = new Set<AiTaskType>([
-  "analyze",
-  "refactor",
-  "investigate",
-]);
+const CLOUD_TASKS = new Set<AiTaskType>(["analyze", "refactor"]);
 const STRATEGY_VALUES: AiStrategy[] = ["auto", "only-local", "only-cloud"];
-
-type Meta = {
-  via: "local" | "cloud";
-  model: string;
-  reason: string;
-};
-
-type UiError = {
-  message: string;
-  hint?: string;
-  code?: string;
-  retryable?: boolean;
-};
-
-type ToolTrace = {
-  id: string;
-  name: string;
-  arguments: string;
-  ok?: boolean;
-  preview?: string;
-};
-
-type FeedbackState = "idle" | "saving" | "up" | "down" | "failed";
 
 export function AiChatPanel() {
   const { t } = useLocale();
@@ -69,23 +40,16 @@ export function AiChatPanel() {
   const [store, setStore] = useState<NotesStore | null>(null);
   const [taskType, setTaskType] = useState<AiTaskType>("summarize");
   const [strategy, setStrategy] = useState<AiStrategy>("auto");
-  const [output, setOutput] = useState("");
-  const [meta, setMeta] = useState<Meta | null>(null);
-  const [error, setError] = useState<UiError | null>(null);
-  const [toolTraces, setToolTraces] = useState<ToolTrace[]>([]);
-  const [runId, setRunId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<FeedbackState>("idle");
-  const [loading, setLoading] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const { state, start, stop, reset, sendFeedback } = useAiStream(copy);
   const skipPersist = useRef(true);
 
   useEffect(() => {
     const loaded = loadNotesStore();
     setStore(loaded);
     const active = loaded.notes.find((n) => n.id === loaded.activeId);
-    setOutput(active?.lastOutput ?? "");
+    reset(active?.lastOutput ?? "");
     setHydrated(true);
-  }, []);
+  }, [reset]);
 
   useEffect(() => {
     if (!hydrated || !store) return;
@@ -109,12 +73,7 @@ export function AiChatPanel() {
     if (!next) return;
 
     patchStore((prev) => ({ ...prev, activeId: id }));
-    setOutput(next.lastOutput ?? "");
-    setMeta(null);
-    setError(null);
-    setToolTraces([]);
-    setRunId(null);
-    setFeedback("idle");
+    reset(next.lastOutput ?? "");
   }
 
   function addNote() {
@@ -124,12 +83,7 @@ export function AiChatPanel() {
       activeId: note.id,
       notes: [note, ...prev.notes],
     }));
-    setOutput("");
-    setMeta(null);
-    setError(null);
-    setToolTraces([]);
-    setRunId(null);
-    setFeedback("idle");
+    reset();
   }
 
   function deleteActiveNote() {
@@ -141,12 +95,7 @@ export function AiChatPanel() {
         activeId: fresh.id,
         notes: [fresh],
       }));
-      setOutput("");
-      setMeta(null);
-      setError(null);
-      setToolTraces([]);
-      setRunId(null);
-      setFeedback("idle");
+      reset();
       return;
     }
 
@@ -156,12 +105,7 @@ export function AiChatPanel() {
       activeId: remaining[0].id,
       notes: remaining,
     }));
-    setOutput(remaining[0].lastOutput ?? "");
-    setMeta(null);
-    setError(null);
-    setToolTraces([]);
-    setRunId(null);
-    setFeedback("idle");
+    reset(remaining[0].lastOutput ?? "");
   }
 
   function updateBody(body: string) {
@@ -190,173 +134,25 @@ export function AiChatPanel() {
     }));
   }
 
-  /**
-   * UI → Gateway: POST /api/ai/chat, then consume SSE
-   * (meta shows route → delta drives typewriter → error/done)
-   */
   async function run(nextStrategy: AiStrategy = strategy) {
-    if (!activeNote?.body.trim() || loading) return;
+    if (!activeNote?.body.trim() || state.loading) return;
 
     const noteId = activeNote.id;
-    const input = activeNote.body;
+    const text = await start({
+      input: activeNote.body,
+      taskType,
+      strategy: nextStrategy,
+    });
 
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-
-    setLoading(true);
-    setOutput("");
-    setMeta(null);
-    setError(null);
-    setToolTraces([]);
-    setRunId(null);
-    setFeedback("idle");
-
-    let assembled = "";
-
-    const saveOutput = (text: string) => {
+    if (text) {
       patchStore((prev) => ({
         ...prev,
         notes: prev.notes.map((n) =>
           n.id === noteId
-            ? {
-                ...n,
-                lastOutput: text,
-                updatedAt: new Date().toISOString(),
-              }
+            ? { ...n, lastOutput: text, updatedAt: new Date().toISOString() }
             : n,
         ),
       }));
-    };
-
-    try {
-      // Call AI Gateway (server routes + talks to Ollama/cloud)
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input,
-          taskType,
-          strategy: nextStrategy,
-        }),
-        signal: ac.signal,
-      });
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(data?.error ?? `${copy.requestFailed} (${res.status})`);
-      }
-
-      if (!res.body) {
-        throw new Error(copy.noStream);
-      }
-
-      // Parse SSE and update UI from data: events
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-
-        for (const part of parts) {
-          const line = part.split("\n").find((l) => l.startsWith("data:"));
-          if (!line) continue;
-
-          let event: StreamEvent;
-          try {
-            event = JSON.parse(line.slice(5).trim()) as StreamEvent;
-          } catch {
-            continue;
-          }
-
-          if (event.type === "run") {
-            setRunId(event.id);
-          } else if (event.type === "meta") {
-            setMeta({
-              via: event.via,
-              model: event.model,
-              reason: event.reason,
-            });
-          } else if (event.type === "tool_call") {
-            setToolTraces((prev) => [
-              ...prev.filter((t) => t.id !== event.id),
-              {
-                id: event.id,
-                name: event.name,
-                arguments: event.arguments,
-              },
-            ]);
-          } else if (event.type === "tool_result") {
-            setToolTraces((prev) =>
-              prev.map((t) =>
-                t.id === event.id
-                  ? {
-                      ...t,
-                      ok: event.ok,
-                      preview: event.preview,
-                    }
-                  : t,
-              ),
-            );
-          } else if (event.type === "delta") {
-            if (assembled.length === 0) {
-              setError(null);
-            }
-            assembled += event.text;
-            setOutput(assembled);
-          } else if (event.type === "error") {
-            setError({
-              message: event.message,
-              hint: event.hint,
-              code: event.code,
-              retryable: event.retryable,
-            });
-          }
-        }
-      }
-
-      if (assembled) {
-        saveOutput(assembled);
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        if (assembled) saveOutput(assembled);
-        return;
-      }
-      const message = err instanceof Error ? err.message : copy.requestFailed;
-      setError({
-        message,
-        hint:
-          /fetch|network|Failed to fetch/i.test(message)
-            ? copy.networkHint
-            : copy.retryHint,
-        retryable: true,
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function sendFeedback(score: 1 | -1) {
-    if (!runId || feedback === "saving") return;
-    setFeedback("saving");
-    try {
-      const res = await fetch(`/api/ai/runs/${runId}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ score }),
-      });
-      setFeedback(res.ok ? (score === 1 ? "up" : "down") : "failed");
-    } catch {
-      setFeedback("failed");
     }
   }
 
@@ -365,15 +161,8 @@ export function AiChatPanel() {
     void run("only-local");
   }
 
-  function stop() {
-    abortRef.current?.abort();
-    setLoading(false);
-  }
-
   if (!hydrated || !store || !activeNote) {
-    return (
-      <p className="text-sm text-zinc-500">{copy.loading}</p>
-    );
+    return <p className="text-sm text-zinc-500">{copy.loading}</p>;
   }
 
   return (
@@ -416,9 +205,7 @@ export function AiChatPanel() {
             </li>
           ))}
         </ul>
-        <p className="text-xs text-zinc-500">
-          {copy.persistHint}
-        </p>
+        <p className="text-xs text-zinc-500">{copy.persistHint}</p>
       </section>
 
       <section className="space-y-2">
@@ -434,11 +221,7 @@ export function AiChatPanel() {
           onChange={(e) => updateBody(e.target.value)}
           rows={6}
           className="w-full resize-y rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-violet-950 shadow-sm outline-none ring-violet-400 focus:ring-2"
-          placeholder={
-            taskType === "investigate"
-              ? copy.investigateHint
-              : copy.placeholder
-          }
+          placeholder={copy.placeholder}
         />
         <p className="text-xs text-zinc-500">
           {activeNote.body.trim().length} {copy.charUnit}
@@ -492,12 +275,12 @@ export function AiChatPanel() {
         <button
           type="button"
           onClick={() => void run()}
-          disabled={loading || !activeNote.body.trim()}
+          disabled={state.loading || !activeNote.body.trim()}
           className="rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? copy.generating : copy.generate}
+          {state.loading ? copy.generating : copy.generate}
         </button>
-        {loading && (
+        {state.loading && (
           <button
             type="button"
             onClick={stop}
@@ -508,131 +291,12 @@ export function AiChatPanel() {
         )}
       </div>
 
-      {(meta || error || output || loading || toolTraces.length > 0) && (
-        <section className="rounded-xl border border-violet-100 bg-white/80 p-4">
-          {meta && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-              <span
-                className={`rounded-full px-2 py-0.5 font-medium ${
-                  meta.via === "local"
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-sky-100 text-sky-800"
-                }`}
-              >
-                via: {meta.via === "local" ? copy.viaLocal : copy.viaCloud}
-              </span>
-              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-800">
-                {meta.model}
-              </span>
-              <span className="text-zinc-500">{meta.reason}</span>
-            </div>
-          )}
-
-          {toolTraces.length > 0 && (
-            <div className="mb-3 space-y-2">
-              <p className="text-xs font-medium text-zinc-600">
-                {copy.toolCalls}
-              </p>
-              <ul className="space-y-2">
-                {toolTraces.map((trace) => (
-                  <li
-                    key={trace.id}
-                    className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono font-medium text-violet-900">
-                        {trace.name}
-                      </span>
-                      {trace.ok != null && (
-                        <span
-                          className={
-                            trace.ok
-                              ? "text-emerald-700"
-                              : "text-red-600"
-                          }
-                        >
-                          {trace.ok ? copy.toolOk : copy.toolFail}
-                        </span>
-                      )}
-                    </div>
-                    {trace.arguments && trace.arguments !== "{}" && (
-                      <p className="mt-1 font-mono text-[11px] text-zinc-500">
-                        {trace.arguments}
-                      </p>
-                    )}
-                    {trace.preview && (
-                      <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-zinc-600">
-                        {trace.preview}
-                      </pre>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-2 space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-              <p className="font-medium">{error.message}</p>
-              {error.hint && (
-                <p className="text-xs text-red-600/90">{error.hint}</p>
-              )}
-              {(error.code === "quota_exhausted" ||
-                error.code === "rate_limited" ||
-                error.code === "auth" ||
-                error.code === "model_unavailable") &&
-                strategy !== "only-local" &&
-                !loading && (
-                  <button
-                    type="button"
-                    onClick={retryLocal}
-                    className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-violet-800 ring-1 ring-violet-200 hover:bg-violet-50"
-                  >
-                    {copy.retryLocal}
-                  </button>
-                )}
-            </div>
-          )}
-
-          <div className="min-h-24 whitespace-pre-wrap text-sm leading-relaxed text-violet-950">
-            {output || (loading ? "…" : "")}
-            {loading && (
-              <span className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-violet-500 align-middle" />
-            )}
-          </div>
-
-          {!loading && runId && output && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3 text-xs text-zinc-500">
-              {feedback === "up" || feedback === "down" ? (
-                <span>{copy.feedbackSaved}</span>
-              ) : (
-                <>
-                  <span>{copy.feedbackPrompt}</span>
-                  <button
-                    type="button"
-                    onClick={() => void sendFeedback(1)}
-                    disabled={feedback === "saving"}
-                    className="rounded-md bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
-                  >
-                    {copy.feedbackUp}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void sendFeedback(-1)}
-                    disabled={feedback === "saving"}
-                    className="rounded-md bg-zinc-50 px-2.5 py-1 font-medium text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100 disabled:opacity-50"
-                  >
-                    {copy.feedbackDown}
-                  </button>
-                  {feedback === "failed" && (
-                    <span className="text-red-600">{copy.feedbackFailed}</span>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+      <AiRunResult
+        state={state}
+        copy={copy}
+        onRetryLocal={strategy !== "only-local" ? retryLocal : undefined}
+        onFeedback={(score) => void sendFeedback(score)}
+      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { FabInvestigatePanel } from "@/components/fab-investigate-panel";
 import { SiteHeader } from "@/components/site-header";
 import { getFabSummary, listAlerts, listBatches } from "@/lib/fab/queries";
 import Link from "next/link";
@@ -34,8 +35,9 @@ export default function FabPage() {
 
         <h1 className="text-2xl font-bold text-violet-950">FAB Ops Demo</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          Step 1 toward a manufacturing co-pilot: SQLite store + query APIs for
-          batches and alerts. Data is synthetic (etch yield dip story).
+          Manufacturing co-pilot demo: SQLite store + query APIs for batches
+          and alerts, with a tool-calling investigate agent on top. Data is
+          synthetic (etch yield dip story).
         </p>
         <p className="mt-2 text-xs text-zinc-500">
           APIs:{" "}
@@ -58,6 +60,10 @@ export default function FabPage() {
             value={String(summary.criticalAlertCount)}
           />
         </section>
+
+        <div className="mt-6">
+          <FabInvestigatePanel />
+        </div>
 
         {summary.yieldTrend.length > 0 && (
           <section className="mt-8">

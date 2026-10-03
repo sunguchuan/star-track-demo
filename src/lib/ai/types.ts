@@ -1,7 +1,9 @@
 /**
  * Hybrid AI types & contracts (UI → Gateway → Router → Ollama/Cloud).
- * StreamEvent order: run → meta → tool_call* / tool_result* → delta* → error? → done
+ * StreamEvent order: run → meta → tool_call* / tool_result* → plan? → delta* → error? → usage? → done
+ * `guardrail` events may appear anywhere before `done`.
  */
+import type { ActionPlan } from "./action-plan";
 export type AiTaskType =
   | "summarize"
   | "polish"
@@ -36,8 +38,22 @@ export type RouteDecision = {
   model: string;
 };
 
+export type GuardrailStage = "input" | "resource" | "tool" | "output";
+
+/** block = request stopped; reroute = sent to local instead of cloud; redact = masked before cloud. */
+export type GuardrailAction = "block" | "warn" | "redact" | "reroute" | "trim";
+
+export type GuardrailHit = {
+  stage: GuardrailStage;
+  rule: string;
+  action: GuardrailAction;
+  message: string;
+  detail?: string;
+};
+
 export type StreamEvent =
   | { type: "run"; id: string }
+  | ({ type: "guardrail" } & GuardrailHit)
   | { type: "meta"; via: AiRouteTarget; model: string; reason: string }
   | {
       type: "tool_call";
@@ -52,6 +68,7 @@ export type StreamEvent =
       ok: boolean;
       preview: string;
     }
+  | { type: "plan"; plan: ActionPlan; ungroundedRefs: string[] }
   | { type: "delta"; text: string }
   | {
       type: "error";
@@ -60,7 +77,23 @@ export type StreamEvent =
       hint?: string;
       retryable?: boolean;
     }
+  | ({ type: "usage" } & RunUsage)
   | { type: "done" };
+
+/** Token counts reported by one provider call. */
+export type TokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+};
+
+/** Per-run usage across every model call (agent rounds, repairs, fallback attempts). */
+export type RunUsage = TokenUsage & {
+  calls: number;
+  /** Cloud tokens × cloud price. */
+  costUsd: number;
+  /** Local tokens × cloud price — what the same work would have cost on cloud. */
+  savedUsd: number;
+};
 
 export const LOCAL_TASKS: readonly AiTaskType[] = [
   "summarize",

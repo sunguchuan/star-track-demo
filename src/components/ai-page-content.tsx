@@ -22,12 +22,20 @@ export function AiPageContent() {
         <code className="rounded bg-violet-50 px-1 text-xs">gemma4</code>
         {t.aiPage.introSuffix}
       </p>
-      <Link
-        href="/ai/runs"
-        className="mt-2 inline-flex text-xs font-medium text-violet-700 hover:underline"
-      >
-        {t.aiPage.viewRuns}
-      </Link>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        <Link
+          href="/ai/runs"
+          className="inline-flex text-xs font-medium text-violet-700 hover:underline"
+        >
+          {t.aiPage.viewRuns}
+        </Link>
+        <Link
+          href="/fab"
+          className="inline-flex text-xs font-medium text-violet-700 hover:underline"
+        >
+          {t.aiPage.fabInvestigateLink}
+        </Link>
+      </div>
 
       <div className="mt-6">
         <AiChatPanel />

@@ -2,12 +2,14 @@
  * Hybrid AI Gateway — POST /api/ai/chat
  *
  * Workflow:
- * 1. Parse request (taskType / strategy / input)
- * 2. Detect runtime + route (local Ollama vs cloud)
- * 3. Build prompt messages (or run investigate agent with tools)
- * 4. Stream model output over SSE; fall back local⇄cloud when needed
- * 5. Push run / meta / tool_* / delta / error / done events to the client
- * 6. Record the run (route, fallback, latency, tools) for /ai/runs
+ * 1. Rate-limit the client, parse request (taskType / strategy / input)
+ * 2. Input guardrails: sanitize, length/history limits, prompt-injection block,
+ *    sensitive data → reroute to local or redact before cloud
+ * 3. Detect runtime + route (local Ollama vs cloud)
+ * 4. Build prompt messages (or run investigate agent with tools)
+ * 5. Stream model output over SSE under a run timeout; fall back local⇄cloud when needed
+ * 6. Output guardrails, token usage / cost, then push done
+ * 7. Record the run (route, fallback, latency, tools, guardrails, tokens, cost) for /ai/runs
  */
 import { randomUUID } from "crypto";
 import { streamCloudChat } from "@/lib/ai/cloud";
@@ -17,7 +19,19 @@ import {
   toProviderError,
   type AiProviderError,
 } from "@/lib/ai/errors";
+import {
+  describeFindings,
+  redactSensitive,
+  runInputGuards,
+} from "@/lib/ai/guardrails/input";
+import { checkOutputSecrets } from "@/lib/ai/guardrails/output";
+import {
+  checkRateLimit,
+  clientKeyFromRequest,
+  RUN_TIMEOUT_MS,
+} from "@/lib/ai/guardrails/resource";
 import { streamOllamaChat } from "@/lib/ai/ollama";
+import { UsageMeter } from "@/lib/ai/pricing";
 import { buildMessages } from "@/lib/ai/prompts";
 import {
   getCloudModel,
@@ -26,15 +40,16 @@ import {
   isLocalAiRuntime,
   resolveRoute,
 } from "@/lib/ai/router";
-import type { AiRunStatus } from "@/lib/ai/runs";
+import type { AiRunGuardrail, AiRunStatus } from "@/lib/ai/runs";
 import { createSseResponse, sseEncode } from "@/lib/ai/sse";
 import type {
   AiRouteTarget,
   AiStrategy,
   AiTaskType,
   ChatMessage,
-  ChatRequestBody,
+  GuardrailHit,
   StreamEvent,
+  TokenUsage,
 } from "@/lib/ai/types";
 
 export const runtime = "nodejs";
@@ -54,8 +69,23 @@ const TASK_TYPES = new Set<AiTaskType>([
 
 const STRATEGIES = new Set<AiStrategy>(["auto", "only-local", "only-cloud"]);
 
+const CLOUD_FALLBACK_LABEL: Partial<Record<string, string>> = {
+  quota_exhausted: "云端额度不足",
+  rate_limited: "云端限流",
+  provider_unavailable: "云端服务暂时不可用",
+  network: "无法连接云端",
+};
+
+type ParsedBody = {
+  input: string;
+  taskType: AiTaskType;
+  strategy: AiStrategy;
+  /** Raw; validated by the input guardrails. */
+  messages: unknown;
+};
+
 /** Step 1 — Validate and normalize the JSON body from the client */
-function parseBody(raw: unknown): ChatRequestBody | null {
+function parseBody(raw: unknown): ParsedBody | null {
   if (!raw || typeof raw !== "object") return null;
   const body = raw as Record<string, unknown>;
   if (typeof body.input !== "string") return null;
@@ -71,9 +101,7 @@ function parseBody(raw: unknown): ChatRequestBody | null {
       STRATEGIES.has(body.strategy as AiStrategy)
         ? (body.strategy as AiStrategy)
         : "auto",
-    messages: Array.isArray(body.messages)
-      ? (body.messages as ChatMessage[])
-      : [],
+    messages: body.messages,
   };
 }
 
@@ -87,26 +115,23 @@ function errorEvent(err: AiProviderError): StreamEvent {
   };
 }
 
-/** Step 4a — Call local Ollama or cloud API based on the route; yield tokens */
+function guardrailEvent(hit: GuardrailHit): StreamEvent {
+  return { type: "guardrail", ...hit };
+}
+
+/** Step 5a — Call local Ollama or cloud API based on the route; yield tokens */
 async function* runModel(options: {
   target: "local" | "cloud";
   model: string;
   messages: ChatMessage[];
   signal: AbortSignal;
+  onUsage: (usage: TokenUsage) => void;
 }): AsyncGenerator<string> {
   if (options.target === "cloud") {
-    yield* streamCloudChat({
-      model: options.model,
-      messages: options.messages,
-      signal: options.signal,
-    });
+    yield* streamCloudChat(options);
     return;
   }
-  yield* streamOllamaChat({
-    model: options.model,
-    messages: options.messages,
-    signal: options.signal,
-  });
+  yield* streamOllamaChat(options);
 }
 
 /** Lazy so plain chat never loads node:sqlite (FAB tools) unless the agent runs. */
@@ -118,6 +143,17 @@ async function* runInvestigateAgent(
 }
 
 export async function POST(request: Request) {
+  const rate = checkRateLimit(clientKeyFromRequest(request));
+  if (!rate.ok) {
+    return Response.json(
+      {
+        error: `请求过于频繁（每分钟最多 ${rate.limit} 次），请 ${rate.retryAfterSec} 秒后再试`,
+        code: "gateway_rate_limited",
+      },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+    );
+  }
+
   let json: unknown;
   try {
     json = await request.json();
@@ -130,40 +166,82 @@ export async function POST(request: Request) {
     return Response.json({ error: "input 不能为空" }, { status: 400 });
   }
 
-  const taskType = body.taskType ?? "chat";
-  const strategy = body.strategy ?? "auto";
+  const { taskType, strategy } = body;
+
+  // Step 2 — Input guardrails
+  const guard = runInputGuards({
+    input: body.input,
+    history: body.messages,
+    taskType,
+  });
+  const input = guard.input;
+  if (!input) {
+    return Response.json({ error: "input 不能为空" }, { status: 400 });
+  }
+
+  const sensitive = guard.sensitive;
+  const cloudInput = sensitive.length > 0 ? redactSensitive(input) : input;
+  const cloudHistory =
+    sensitive.length > 0
+      ? guard.history.map((m) => ({ ...m, content: redactSensitive(m.content) }))
+      : guard.history;
+  /** Raw text stays on the machine; anything bound for cloud is redacted. */
+  const inputFor = (target: AiRouteTarget) =>
+    target === "cloud" ? cloudInput : input;
+  const messagesFor = (target: AiRouteTarget) =>
+    target === "cloud"
+      ? buildMessages(taskType, cloudInput, cloudHistory)
+      : buildMessages(taskType, input, guard.history);
+
+  // Step 3 — Route
   const cloudAvailable = isCloudConfigured();
   const localRuntime = isLocalAiRuntime();
   const decision = resolveRoute({
     taskType,
     strategy,
-    inputLength: body.input.trim().length,
+    inputLength: input.length,
     cloudAvailable,
     localRuntime,
   });
 
-  const messages = buildMessages(taskType, body.input.trim(), body.messages);
   const useAgent = taskType === "investigate";
   const runId = randomUUID();
   const startedAt = Date.now();
+  const runSignal =
+    RUN_TIMEOUT_MS > 0
+      ? AbortSignal.any([request.signal, AbortSignal.timeout(RUN_TIMEOUT_MS)])
+      : request.signal;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let firstDeltaAt: number | null = null;
       let outputChars = 0;
+      let outputText = "";
       let toolCalls = 0;
       let lastErrorCode: string | null = null;
       let fellBack = false;
+      let blocked = false;
+      let timeoutReported = false;
+      let redactNoticeSent = false;
+      const guardrails: AiRunGuardrail[] = [];
+      const meter = new UsageMeter();
 
       const push = (event: StreamEvent) => {
         if (event.type === "delta") {
           firstDeltaAt ??= Date.now();
           outputChars += event.text.length;
+          outputText += event.text;
         } else if (event.type === "tool_call") {
           toolCalls += 1;
         } else if (event.type === "error") {
           lastErrorCode = event.code ?? "unknown";
+        } else if (event.type === "guardrail") {
+          guardrails.push({
+            stage: event.stage,
+            rule: event.rule,
+            action: event.action,
+          });
         }
         try {
           controller.enqueue(encoder.encode(sseEncode(event)));
@@ -178,11 +256,16 @@ export async function POST(request: Request) {
       let initialTarget: AiRouteTarget = via;
 
       const finish = async () => {
-        const status: AiRunStatus = request.signal.aborted
-          ? "aborted"
-          : outputChars > 0
-            ? "ok"
-            : "error";
+        const status: AiRunStatus = blocked
+          ? "blocked"
+          : request.signal.aborted
+            ? "aborted"
+            : lastErrorCode === "timeout"
+              ? "error"
+              : outputChars > 0
+                ? "ok"
+                : "error";
+        const usage = meter.summary();
         try {
           const { recordRun } = await import("@/lib/ai/runs");
           recordRun({
@@ -199,9 +282,11 @@ export async function POST(request: Request) {
             errorCode: lastErrorCode,
             ttftMs: firstDeltaAt == null ? null : firstDeltaAt - startedAt,
             totalMs: Date.now() - startedAt,
-            inputChars: body.input.trim().length,
+            inputChars: input.length,
             outputChars,
             toolCalls,
+            guardrails,
+            usage,
           });
         } catch (err) {
           console.error("[ai/chat] failed to record run", err);
@@ -213,7 +298,97 @@ export async function POST(request: Request) {
         }
       };
 
+      /** Step 6 — Output guardrails, usage, then done. */
+      const pushDone = () => {
+        if (!blocked) {
+          for (const hit of checkOutputSecrets(outputText)) {
+            push(guardrailEvent(hit));
+          }
+        }
+        const usage = meter.summary();
+        if (usage) push({ type: "usage", ...usage });
+        push({ type: "done" });
+      };
+
+      const reportTimeout = () => {
+        if (timeoutReported) return;
+        timeoutReported = true;
+        push(
+          guardrailEvent({
+            stage: "resource",
+            rule: "run_timeout",
+            action: "block",
+            message: `运行超过 ${Math.round(RUN_TIMEOUT_MS / 1000)} 秒上限，已停止`,
+          }),
+        );
+      };
+
+      const noteCloudRedaction = () => {
+        if (sensitive.length === 0 || redactNoticeSent) return;
+        redactNoticeSent = true;
+        push(
+          guardrailEvent({
+            stage: "input",
+            rule: "sensitive_redact",
+            action: "redact",
+            message: "检测到敏感信息，发送到云端前已脱敏",
+            detail: describeFindings(sensitive),
+          }),
+        );
+      };
+
+      const handleRunError = (providerErr: AiProviderError) => {
+        if (providerErr.code === "timeout") reportTimeout();
+        if (providerErr.code !== "aborted") push(errorEvent(providerErr));
+      };
+
+      async function runOn(target: AiRouteTarget, runModelName: string) {
+        if (target === "cloud") noteCloudRedaction();
+        const onUsage = (usage: TokenUsage) => meter.add(target, usage);
+        if (useAgent) {
+          for await (const event of runInvestigateAgent({
+            target,
+            model: runModelName,
+            userInput: inputFor(target),
+            signal: runSignal,
+            onUsage,
+          })) {
+            if (runSignal.aborted) break;
+            push(event);
+          }
+        } else {
+          for await (const text of runModel({
+            target,
+            model: runModelName,
+            messages: messagesFor(target),
+            signal: runSignal,
+            onUsage,
+          })) {
+            if (runSignal.aborted) break;
+            push({ type: "delta", text });
+          }
+        }
+      }
+
       push({ type: "run", id: runId });
+      for (const hit of guard.hits) push(guardrailEvent(hit));
+
+      if (guard.blocked) {
+        const { hint, ...hit } = guard.blocked;
+        blocked = true;
+        push(guardrailEvent(hit));
+        push({
+          type: "error",
+          message: hit.message,
+          code: "guardrail_blocked",
+          hint,
+          retryable: false,
+        });
+        pushDone();
+        await finish();
+        return;
+      }
+
       push({ type: "meta", via, model, reason });
 
       if (!localRuntime && !cloudAvailable) {
@@ -224,7 +399,7 @@ export async function POST(request: Request) {
           hint: "请在 Vercel → Project → Settings → Environment Variables 添加 OPENAI_API_KEY、OPENAI_BASE_URL、CLOUD_MODEL（与本地 .env.local 相同）。",
           retryable: false,
         });
-        push({ type: "done" });
+        pushDone();
         await finish();
         return;
       }
@@ -235,31 +410,28 @@ export async function POST(request: Request) {
         reason = "线上环境已强制改走云端";
         push({ type: "meta", via, model, reason });
       }
+
+      // Sensitive data under auto stays local when a local model exists.
+      if (sensitive.length > 0 && via === "cloud" && localRuntime && strategy === "auto") {
+        via = "local";
+        model = getLocalModel();
+        reason = "检测到敏感信息，已改走本地（数据不出本机）";
+        push(
+          guardrailEvent({
+            stage: "input",
+            rule: "sensitive_reroute",
+            action: "reroute",
+            message: "检测到敏感信息，已改走本地模型，数据不出本机",
+            detail: describeFindings(sensitive),
+          }),
+        );
+        push({ type: "meta", via, model, reason });
+      }
       initialTarget = via;
 
       try {
         try {
-          if (useAgent) {
-            for await (const event of runInvestigateAgent({
-              target: via,
-              model,
-              userInput: body.input.trim(),
-              signal: request.signal,
-            })) {
-              if (request.signal.aborted) break;
-              push(event);
-            }
-          } else {
-            for await (const text of runModel({
-              target: via,
-              model,
-              messages,
-              signal: request.signal,
-            })) {
-              if (request.signal.aborted) break;
-              push({ type: "delta", text });
-            }
-          }
+          await runOn(via, model);
         } catch (err) {
           const providerErr = toProviderError(err, via);
 
@@ -283,28 +455,7 @@ export async function POST(request: Request) {
             model = cloudModel;
             reason = "本地不可用，已自动改走云端";
             push({ type: "meta", via, model, reason });
-
-            if (useAgent) {
-              for await (const event of runInvestigateAgent({
-                target: "cloud",
-                model: cloudModel,
-                userInput: body.input.trim(),
-                signal: request.signal,
-              })) {
-                if (request.signal.aborted) break;
-                push(event);
-              }
-            } else {
-              for await (const text of runModel({
-                target: "cloud",
-                model: cloudModel,
-                messages,
-                signal: request.signal,
-              })) {
-                if (request.signal.aborted) break;
-                push({ type: "delta", text });
-              }
-            }
+            await runOn("cloud", cloudModel);
           } else if (
             via === "cloud" &&
             localRuntime &&
@@ -323,42 +474,28 @@ export async function POST(request: Request) {
             fellBack = true;
             via = "local";
             model = localModel;
-            reason = `云端${providerErr.code === "quota_exhausted" ? "额度不足" : "限流"}，已自动降级本地`;
+            reason = `${CLOUD_FALLBACK_LABEL[providerErr.code] ?? "云端不可用"}，已自动降级本地`;
             push({ type: "meta", via, model, reason });
-
-            if (useAgent) {
-              for await (const event of runInvestigateAgent({
-                target: "local",
-                model: localModel,
-                userInput: body.input.trim(),
-                signal: request.signal,
-              })) {
-                if (request.signal.aborted) break;
-                push(event);
-              }
-            } else {
-              for await (const text of runModel({
-                target: "local",
-                model: localModel,
-                messages,
-                signal: request.signal,
-              })) {
-                if (request.signal.aborted) break;
-                push({ type: "delta", text });
-              }
-            }
-          } else if (providerErr.code !== "aborted") {
-            push(errorEvent(providerErr));
+            await runOn("local", localModel);
+          } else {
+            handleRunError(providerErr);
           }
         }
 
-        push({ type: "done" });
-      } catch (err) {
-        const providerErr = toProviderError(err, via);
-        if (providerErr.code !== "aborted") {
-          push(errorEvent(providerErr));
+        if (!request.signal.aborted && runSignal.aborted && !timeoutReported) {
+          reportTimeout();
+          push({
+            type: "error",
+            message: "生成超时，已停止",
+            code: "timeout",
+            hint: "可以缩短输入后重试，或换一侧模型。",
+            retryable: true,
+          });
         }
-        push({ type: "done" });
+        pushDone();
+      } catch (err) {
+        handleRunError(toProviderError(err, via));
+        pushDone();
       } finally {
         await finish();
       }

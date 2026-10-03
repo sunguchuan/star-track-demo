@@ -8,8 +8,10 @@ export type AiErrorCode =
   | "auth"
   | "model_unavailable"
   | "context_too_long"
+  | "provider_unavailable"
   | "ollama_offline"
   | "network"
+  | "timeout"
   | "aborted"
   | "unknown";
 
@@ -145,11 +147,17 @@ function classifyFromStatusAndText(
     };
   }
 
-  if (status && status >= 500) {
+  if (
+    (status && status >= 500) ||
+    /overloaded|unavailable|service.?unavailable|bad gateway|gateway timeout/i.test(text)
+  ) {
     return {
-      code: "unknown",
-      message: `${provider === "cloud" ? "云端" : "本地"}服务暂时不可用 (${status})`,
-      hint: "请稍后重试；也可切换到另一侧模型。",
+      code: "provider_unavailable",
+      message: `${provider === "cloud" ? "云端" : "本地"}服务暂时不可用${status ? ` (${status})` : ""}`,
+      hint:
+        provider === "cloud"
+          ? "云端模型繁忙或临时故障；自动路由下会降级到本地，也可稍后重试。"
+          : "请稍后重试；也可切换到另一侧模型。",
       retryable: true,
     };
   }
@@ -169,6 +177,18 @@ export function toProviderError(
   provider: "local" | "cloud",
 ): AiProviderError {
   if (err instanceof AiProviderError) return err;
+
+  // AbortSignal.timeout() rejects fetch/read with a TimeoutError, not AbortError.
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return new AiProviderError({
+      code: "timeout",
+      message: "生成超时，已停止",
+      hint: "可以缩短输入后重试，或换一侧模型。",
+      retryable: true,
+      provider,
+      cause: err,
+    });
+  }
 
   if (err instanceof DOMException && err.name === "AbortError") {
     return new AiProviderError({
@@ -238,10 +258,15 @@ export function httpErrorToProviderError(options: {
   });
 }
 
-/** Quota / rate-limit errors that are safe to fall back to local under auto. */
+/** Transient cloud failures that are safe to fall back to local under auto. */
 export function shouldFallbackToLocal(err: unknown): boolean {
   const e = toProviderError(err, "cloud");
-  return e.code === "quota_exhausted" || e.code === "rate_limited";
+  return (
+    e.code === "quota_exhausted" ||
+    e.code === "rate_limited" ||
+    e.code === "provider_unavailable" ||
+    e.code === "network"
+  );
 }
 
 /** Local failures that should fall back to cloud when Key is configured. */

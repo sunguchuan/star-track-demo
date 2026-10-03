@@ -2,24 +2,97 @@ import {
   httpErrorToProviderError,
   toProviderError,
 } from "./errors";
+import { MAX_OUTPUT_TOKENS } from "./guardrails/resource";
 import type {
   ChatCompletionMessage,
   ChatCompletionResult,
   OpenAiTool,
   ToolCallRequest,
 } from "./tools/types";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, TokenUsage } from "./types";
 
 const CLOUD_BASE =
   process.env.OPENAI_BASE_URL?.replace(/\/$/, "") ??
   "https://api.openai.com/v1";
 
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const RETRY_DELAY_MS = 800;
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const abort = () =>
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    if (signal?.aborted) return abort();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        abort();
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * POST chat/completions, retrying once on transient 5xx.
+ * Safe to retry: these statuses arrive before any tokens are streamed.
+ */
+async function postChatCompletions(
+  apiKey: string,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const send = () =>
+    fetch(`${CLOUD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+  const first = await send();
+  if (!RETRYABLE_STATUS.has(first.status)) return first;
+
+  await first.body?.cancel().catch(() => {});
+  await sleep(RETRY_DELAY_MS, signal);
+  return send();
+}
+
+type OpenAiUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
 type OpenAiStreamChunk = {
   choices?: Array<{ delta?: { content?: string } }>;
+  usage?: OpenAiUsage | null;
   error?: { message?: string; code?: string; type?: string };
 };
 
+/** Gemini bills thinking tokens as output but may leave them out of completion_tokens. */
+function toTokenUsage(usage: OpenAiUsage | null | undefined): TokenUsage | null {
+  if (!usage || usage.prompt_tokens == null) return null;
+  const prompt = usage.prompt_tokens;
+  const completion = Math.max(
+    usage.completion_tokens ?? 0,
+    (usage.total_tokens ?? 0) - prompt,
+  );
+  return { promptTokens: prompt, completionTokens: completion };
+}
+
+export type JsonSchemaFormat = {
+  name: string;
+  schema: Record<string, unknown>;
+};
+
 type OpenAiCompletionResponse = {
+  usage?: OpenAiUsage;
   choices?: Array<{
     message?: {
       content?: string | null;
@@ -43,6 +116,7 @@ export async function* streamCloudChat(options: {
   model: string;
   messages: ChatMessage[];
   signal?: AbortSignal;
+  onUsage?: (usage: TokenUsage) => void;
 }): AsyncGenerator<string> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -53,24 +127,22 @@ export async function* streamCloudChat(options: {
     });
   }
 
-  const { model, messages, signal } = options;
+  const { model, messages, signal, onUsage } = options;
 
   // Start streaming request
   let res: Response;
   try {
-    res = await fetch(`${CLOUD_BASE}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    res = await postChatCompletions(
+      apiKey,
+      {
         model,
         messages,
         stream: true,
-      }),
+        stream_options: { include_usage: true },
+        max_tokens: MAX_OUTPUT_TOKENS,
+      },
       signal,
-    });
+    );
   } catch (err) {
     throw toProviderError(err, "cloud");
   }
@@ -92,6 +164,8 @@ export async function* streamCloudChat(options: {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // Usage is cumulative per chunk (Gemini) or only on the last one (OpenAI); keep the latest.
+  let usage: TokenUsage | null = null;
 
   try {
     while (true) {
@@ -125,6 +199,7 @@ export async function* streamCloudChat(options: {
           });
         }
 
+        usage = toTokenUsage(chunk.usage) ?? usage;
         const text = chunk.choices?.[0]?.delta?.content;
         if (text) {
           yield text;
@@ -133,6 +208,9 @@ export async function* streamCloudChat(options: {
     }
   } catch (err) {
     throw toProviderError(err, "cloud");
+  } finally {
+    // Also runs on [DONE] return and on consumer break, so partial runs are still counted.
+    if (usage) onUsage?.(usage);
   }
 }
 
@@ -144,7 +222,10 @@ export async function completeCloudChat(options: {
   messages: ChatCompletionMessage[];
   tools?: OpenAiTool[];
   toolChoice?: "auto" | "none" | "required";
+  /** Constrain the reply to a JSON schema (structured output). */
+  jsonSchema?: JsonSchemaFormat;
   signal?: AbortSignal;
+  onUsage?: (usage: TokenUsage) => void;
 }): Promise<ChatCompletionResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -155,29 +236,34 @@ export async function completeCloudChat(options: {
     });
   }
 
-  const { model, messages, tools, toolChoice, signal } = options;
+  const { model, messages, tools, toolChoice, jsonSchema, signal, onUsage } = options;
 
   let res: Response;
   try {
-    res = await fetch(`${CLOUD_BASE}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    res = await postChatCompletions(
+      apiKey,
+      {
         model,
         messages,
         stream: false,
+        max_tokens: MAX_OUTPUT_TOKENS,
         ...(tools?.length
           ? {
               tools,
               tool_choice: toolChoice ?? "auto",
             }
           : {}),
-      }),
+        ...(jsonSchema
+          ? {
+              response_format: {
+                type: "json_schema",
+                json_schema: { ...jsonSchema, strict: true },
+              },
+            }
+          : {}),
+      },
       signal,
-    });
+    );
   } catch (err) {
     throw toProviderError(err, "cloud");
   }
@@ -205,6 +291,9 @@ export async function completeCloudChat(options: {
       detail: data.error.message,
     });
   }
+
+  const usage = toTokenUsage(data.usage);
+  if (usage) onUsage?.(usage);
 
   const message = data.choices?.[0]?.message;
   const toolCalls: ToolCallRequest[] = [];

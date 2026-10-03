@@ -2,23 +2,38 @@ import {
   httpErrorToProviderError,
   toProviderError,
 } from "./errors";
+import { MAX_OUTPUT_TOKENS } from "./guardrails/resource";
 import type {
   ChatCompletionMessage,
   ChatCompletionResult,
   OpenAiTool,
   ToolCallRequest,
 } from "./tools/types";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, TokenUsage } from "./types";
 
 const OLLAMA_BASE =
   process.env.OLLAMA_BASE_URL?.replace(/\/$/, "") ??
   "http://127.0.0.1:11434";
 
-type OllamaChatChunk = {
+/** Present on the final (done) message of /api/chat. */
+type OllamaCounts = {
+  prompt_eval_count?: number;
+  eval_count?: number;
+};
+
+type OllamaChatChunk = OllamaCounts & {
   message?: { content?: string };
   done?: boolean;
   error?: string;
 };
+
+function toTokenUsage(counts: OllamaCounts): TokenUsage | null {
+  if (counts.prompt_eval_count == null && counts.eval_count == null) return null;
+  return {
+    promptTokens: counts.prompt_eval_count ?? 0,
+    completionTokens: counts.eval_count ?? 0,
+  };
+}
 
 type OllamaToolCall = {
   id?: string;
@@ -28,7 +43,7 @@ type OllamaToolCall = {
   };
 };
 
-type OllamaChatResponse = {
+type OllamaChatResponse = OllamaCounts & {
   message?: {
     role?: string;
     content?: string;
@@ -45,8 +60,9 @@ export async function* streamOllamaChat(options: {
   model: string;
   messages: ChatMessage[];
   signal?: AbortSignal;
+  onUsage?: (usage: TokenUsage) => void;
 }): AsyncGenerator<string> {
-  const { model, messages, signal } = options;
+  const { model, messages, signal, onUsage } = options;
 
   // Start streaming; connection failures become ollama_offline for cloud fallback
   let res: Response;
@@ -58,6 +74,7 @@ export async function* streamOllamaChat(options: {
         model,
         messages,
         stream: true,
+        options: { num_predict: MAX_OUTPUT_TOKENS },
       }),
       signal,
     });
@@ -82,6 +99,7 @@ export async function* streamOllamaChat(options: {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let usage: TokenUsage | null = null;
 
   try {
     while (true) {
@@ -111,6 +129,7 @@ export async function* streamOllamaChat(options: {
           });
         }
 
+        if (chunk.done) usage = toTokenUsage(chunk) ?? usage;
         const text = chunk.message?.content;
         if (text) {
           yield text;
@@ -121,6 +140,7 @@ export async function* streamOllamaChat(options: {
     if (buffer.trim()) {
       try {
         const chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+        if (chunk.done) usage = toTokenUsage(chunk) ?? usage;
         if (chunk.message?.content) {
           yield chunk.message.content;
         }
@@ -130,6 +150,8 @@ export async function* streamOllamaChat(options: {
     }
   } catch (err) {
     throw toProviderError(err, "local");
+  } finally {
+    if (usage) onUsage?.(usage);
   }
 }
 
@@ -153,9 +175,12 @@ export async function completeOllamaChat(options: {
   model: string;
   messages: ChatCompletionMessage[];
   tools?: OpenAiTool[];
+  /** JSON schema for structured output (Ollama `format`). */
+  jsonSchema?: Record<string, unknown>;
   signal?: AbortSignal;
+  onUsage?: (usage: TokenUsage) => void;
 }): Promise<ChatCompletionResult> {
-  const { model, messages, tools, signal } = options;
+  const { model, messages, tools, jsonSchema, signal, onUsage } = options;
 
   let res: Response;
   try {
@@ -166,7 +191,9 @@ export async function completeOllamaChat(options: {
         model,
         messages,
         stream: false,
+        options: { num_predict: MAX_OUTPUT_TOKENS },
         ...(tools?.length ? { tools } : {}),
+        ...(jsonSchema ? { format: jsonSchema } : {}),
       }),
       signal,
     });
@@ -197,6 +224,9 @@ export async function completeOllamaChat(options: {
       detail: data.error,
     });
   }
+
+  const usage = toTokenUsage(data);
+  if (usage) onUsage?.(usage);
 
   const toolCalls: ToolCallRequest[] = (data.message?.tool_calls ?? [])
     .map((call, index) => {

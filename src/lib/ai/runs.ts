@@ -1,14 +1,28 @@
 /**
  * Run log for the Hybrid AI Gateway: one row per POST /api/ai/chat.
- * Feeds the /ai/runs observability board (route mix, fallback, latency, feedback).
+ * Feeds the /ai/runs observability board (route mix, fallback, latency, tokens/cost, feedback).
  */
 import { mkdirSync } from "fs";
 import { dirname } from "path";
 import { DatabaseSync } from "node:sqlite";
 import { dataFilePath } from "@/lib/data-path";
-import type { AiRouteTarget, AiStrategy, AiTaskType } from "./types";
+import type {
+  AiRouteTarget,
+  AiStrategy,
+  AiTaskType,
+  GuardrailAction,
+  GuardrailStage,
+  RunUsage,
+} from "./types";
 
-export type AiRunStatus = "ok" | "error" | "aborted";
+export type AiRunStatus = "ok" | "error" | "aborted" | "blocked";
+
+/** Compact guardrail hit stored per run. */
+export type AiRunGuardrail = {
+  stage: GuardrailStage;
+  rule: string;
+  action: GuardrailAction;
+};
 export type AiRunFeedback = 1 | -1;
 
 export type AiRunRecord = {
@@ -28,7 +42,22 @@ export type AiRunRecord = {
   inputChars: number;
   outputChars: number;
   toolCalls: number;
+  guardrails: AiRunGuardrail[];
+  /** Null for blocked runs and rows recorded before usage tracking. */
+  usage: RunUsage | null;
   feedback: AiRunFeedback | null;
+};
+
+export type UsageStats = {
+  /** Runs that reported token usage. */
+  runs: number;
+  promptTokens: number;
+  completionTokens: number;
+  avgTokensPerRun: number | null;
+  costUsd: number;
+  savedUsd: number;
+  /** Share of would-be cloud spend avoided by running locally. */
+  savingsRate: number | null;
 };
 
 export type LatencyStats = {
@@ -46,12 +75,22 @@ export type AiRunStats = {
   fallbackCount: number;
   errorCount: number;
   abortedCount: number;
+  blockedCount: number;
+  guardrailRunCount: number;
+  byGuardrail: (AiRunGuardrail & { count: number })[];
   toolRunCount: number;
   feedbackUp: number;
   feedbackDown: number;
   latency: LatencyStats;
-  byVia: Record<AiRouteTarget, LatencyStats>;
-  byTask: { taskType: AiTaskType; count: number; errorCount: number }[];
+  usage: UsageStats;
+  byVia: Record<AiRouteTarget, LatencyStats & { avgTokens: number | null }>;
+  byTask: {
+    taskType: AiTaskType;
+    count: number;
+    errorCount: number;
+    avgTokens: number | null;
+    costUsd: number;
+  }[];
 };
 
 type RunRow = {
@@ -71,8 +110,24 @@ type RunRow = {
   input_chars: number;
   output_chars: number;
   tool_calls: number;
+  guardrails: string | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  llm_calls: number | null;
+  cost_usd: number | null;
+  saved_usd: number | null;
   feedback: number | null;
 };
+
+/** Columns added after the first release; created on startup if missing. */
+const ADDED_COLUMNS: [name: string, type: string][] = [
+  ["guardrails", "TEXT"],
+  ["prompt_tokens", "INTEGER"],
+  ["completion_tokens", "INTEGER"],
+  ["llm_calls", "INTEGER"],
+  ["cost_usd", "REAL"],
+  ["saved_usd", "REAL"],
+];
 
 const STATS_WINDOW = 500;
 
@@ -106,8 +161,26 @@ function getRunsDb(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS idx_ai_runs_created ON ai_runs(created_at DESC);
   `);
+  const columns = db.prepare("PRAGMA table_info(ai_runs)").all() as {
+    name: string;
+  }[];
+  for (const [name, type] of ADDED_COLUMNS) {
+    if (!columns.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE ai_runs ADD COLUMN ${name} ${type}`);
+    }
+  }
   cached = db;
   return db;
+}
+
+function parseGuardrails(raw: string | null): AiRunGuardrail[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as AiRunGuardrail[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapRun(row: RunRow): AiRunRecord {
@@ -128,6 +201,17 @@ function mapRun(row: RunRow): AiRunRecord {
     inputChars: row.input_chars,
     outputChars: row.output_chars,
     toolCalls: row.tool_calls,
+    guardrails: parseGuardrails(row.guardrails),
+    usage:
+      row.prompt_tokens == null
+        ? null
+        : {
+            promptTokens: row.prompt_tokens,
+            completionTokens: row.completion_tokens ?? 0,
+            calls: row.llm_calls ?? 0,
+            costUsd: row.cost_usd ?? 0,
+            savedUsd: row.saved_usd ?? 0,
+          },
     feedback:
       row.feedback === 1 ? 1 : row.feedback === -1 ? -1 : null,
   };
@@ -138,8 +222,9 @@ export function recordRun(run: Omit<AiRunRecord, "feedback">): void {
     .prepare(
       `INSERT OR REPLACE INTO ai_runs
         (id, created_at, task_type, strategy, initial_target, via, model, reason,
-         fell_back, status, error_code, ttft_ms, total_ms, input_chars, output_chars, tool_calls)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         fell_back, status, error_code, ttft_ms, total_ms, input_chars, output_chars, tool_calls,
+         guardrails, prompt_tokens, completion_tokens, llm_calls, cost_usd, saved_usd)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       run.id,
@@ -158,6 +243,12 @@ export function recordRun(run: Omit<AiRunRecord, "feedback">): void {
       run.inputChars,
       run.outputChars,
       run.toolCalls,
+      run.guardrails.length > 0 ? JSON.stringify(run.guardrails) : null,
+      run.usage?.promptTokens ?? null,
+      run.usage?.completionTokens ?? null,
+      run.usage?.calls ?? null,
+      run.usage?.costUsd ?? null,
+      run.usage?.savedUsd ?? null,
     );
 }
 
@@ -205,15 +296,47 @@ function latencyOf(runs: AiRunRecord[]): LatencyStats {
   };
 }
 
+const totalTokens = (u: RunUsage) => u.promptTokens + u.completionTokens;
+
+function avgTokensOf(runs: AiRunRecord[]): number | null {
+  const usages = runs.flatMap((r) => (r.usage ? [r.usage] : []));
+  if (usages.length === 0) return null;
+  return Math.round(usages.reduce((sum, u) => sum + totalTokens(u), 0) / usages.length);
+}
+
+function usageOf(runs: AiRunRecord[]): UsageStats {
+  const usages = runs.flatMap((r) => (r.usage ? [r.usage] : []));
+  const sum = (pick: (u: RunUsage) => number) =>
+    usages.reduce((acc, u) => acc + pick(u), 0);
+  const costUsd = sum((u) => u.costUsd);
+  const savedUsd = sum((u) => u.savedUsd);
+  return {
+    runs: usages.length,
+    promptTokens: sum((u) => u.promptTokens),
+    completionTokens: sum((u) => u.completionTokens),
+    avgTokensPerRun: avgTokensOf(runs),
+    costUsd,
+    savedUsd,
+    savingsRate: costUsd + savedUsd > 0 ? savedUsd / (costUsd + savedUsd) : null,
+  };
+}
+
 export function getRunStats(): AiRunStats {
   const runs = listRunsWindow();
 
-  const byTaskMap = new Map<AiTaskType, { count: number; errorCount: number }>();
+  const byTaskMap = new Map<AiTaskType, AiRunRecord[]>();
   for (const run of runs) {
-    const entry = byTaskMap.get(run.taskType) ?? { count: 0, errorCount: 0 };
-    entry.count += 1;
-    if (run.status === "error") entry.errorCount += 1;
-    byTaskMap.set(run.taskType, entry);
+    byTaskMap.set(run.taskType, [...(byTaskMap.get(run.taskType) ?? []), run]);
+  }
+
+  const byGuardrailMap = new Map<string, AiRunGuardrail & { count: number }>();
+  for (const run of runs) {
+    for (const g of run.guardrails) {
+      const key = `${g.stage}:${g.rule}:${g.action}`;
+      const entry = byGuardrailMap.get(key) ?? { ...g, count: 0 };
+      entry.count += 1;
+      byGuardrailMap.set(key, entry);
+    }
   }
 
   return {
@@ -223,18 +346,32 @@ export function getRunStats(): AiRunStats {
     fallbackCount: runs.filter((r) => r.fellBack).length,
     errorCount: runs.filter((r) => r.status === "error").length,
     abortedCount: runs.filter((r) => r.status === "aborted").length,
+    blockedCount: runs.filter((r) => r.status === "blocked").length,
+    guardrailRunCount: runs.filter((r) => r.guardrails.length > 0).length,
+    byGuardrail: [...byGuardrailMap.values()].sort((a, b) => b.count - a.count),
     toolRunCount: runs.filter((r) => r.toolCalls > 0).length,
     feedbackUp: runs.filter((r) => r.feedback === 1).length,
     feedbackDown: runs.filter((r) => r.feedback === -1).length,
     latency: latencyOf(runs),
+    usage: usageOf(runs),
     byVia: {
-      local: latencyOf(runs.filter((r) => r.via === "local")),
-      cloud: latencyOf(runs.filter((r) => r.via === "cloud")),
+      local: viaStats(runs.filter((r) => r.via === "local")),
+      cloud: viaStats(runs.filter((r) => r.via === "cloud")),
     },
     byTask: [...byTaskMap.entries()]
-      .map(([taskType, v]) => ({ taskType, ...v }))
+      .map(([taskType, taskRuns]) => ({
+        taskType,
+        count: taskRuns.length,
+        errorCount: taskRuns.filter((r) => r.status === "error").length,
+        avgTokens: avgTokensOf(taskRuns),
+        costUsd: taskRuns.reduce((acc, r) => acc + (r.usage?.costUsd ?? 0), 0),
+      }))
       .sort((a, b) => b.count - a.count),
   };
+}
+
+function viaStats(runs: AiRunRecord[]) {
+  return { ...latencyOf(runs), avgTokens: avgTokensOf(runs) };
 }
 
 function listRunsWindow(): AiRunRecord[] {

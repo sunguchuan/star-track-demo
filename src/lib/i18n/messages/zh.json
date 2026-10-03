@@ -275,13 +275,50 @@
     "toolCalls": "工具调用",
     "toolOk": "成功",
     "toolFail": "失败",
-    "investigateHint": "例如：Etch Chamber B7 良率下滑，帮我查告警并给 Action Plan",
+    "guardrails": "安全护栏",
+    "guardrailStages": {
+      "input": "输入",
+      "resource": "资源",
+      "tool": "工具",
+      "output": "输出"
+    },
+    "guardrailActions": {
+      "block": "拦截",
+      "warn": "警告",
+      "redact": "脱敏",
+      "reroute": "改走本地",
+      "trim": "截断"
+    },
     "feedbackPrompt": "这次回答有帮助吗？",
     "feedbackUp": "有帮助",
     "feedbackDown": "没帮助",
     "feedbackSaved": "已记录反馈，谢谢",
     "feedbackFailed": "反馈保存失败",
+    "plan": {
+      "pending": "数据已就绪，正在生成 Action Plan（完整生成后一次显示）…",
+      "summary": "结论",
+      "findings": "现象（事实）",
+      "causes": "可能原因",
+      "actions": "建议动作",
+      "dataToConfirm": "需确认的数据",
+      "confidence": {
+        "high": "可能性高",
+        "medium": "可能性中",
+        "low": "可能性低"
+      },
+      "ungroundedRef": "该引用未在工具返回的数据中找到，请人工核实"
+    },
+    "usage": {
+      "tokens": "Token",
+      "in": "输入",
+      "out": "输出",
+      "calls": "次模型调用",
+      "cost": "云端费用约",
+      "saved": "本地运行，按云端价约省",
+      "note": "按云端付费单价估算；本地 Ollama 不计费。免费档的实际费用为 0。"
+    },
     "viewRuns": "运行记录与指标 →",
+    "fabInvestigateLink": "产线排查（FAB 页面）→",
     "tasks": {
       "summarize": "总结",
       "polish": "润色",
@@ -299,9 +336,24 @@
       "only-cloud": "仅云端"
     }
   },
+  "fabInvestigate": {
+    "title": "AI 产线排查",
+    "intro": "描述你看到的现象，Agent 会调用只读工具查询产线总览、批次和告警，再给出 Action Plan（现象 / 可能原因 / 建议动作 / 需确认的数据）。",
+    "viewRuns": "运行记录 →",
+    "inputLabel": "排查问题",
+    "placeholder": "例如：Etch Chamber B7 良率下滑，帮我查告警并给 Action Plan",
+    "examples": [
+      "Etch Chamber B7 最近良率下滑，帮我查告警并给 Action Plan",
+      "批次 B-240909-01 为什么低于控制限？",
+      "当前未关闭的严重告警有哪些？按优先级给处理建议"
+    ],
+    "run": "开始排查",
+    "running": "排查中…",
+    "shortcutHint": "Ctrl + Enter 发送 · 默认走云端，云端不可用时自动降级到本地"
+  },
   "aiRuns": {
     "title": "AI 运行看板",
-    "intro": "每次调用 /api/ai/chat 都会记录：走本地还是云端、是否降级、首字延迟、总耗时、工具调用和用户反馈。统计基于最近 500 次运行。",
+    "intro": "每次调用 /api/ai/chat 都会记录：走本地还是云端、是否降级、首字延迟、总耗时、工具调用、护栏命中、Token 用量与费用、用户反馈。统计基于最近 500 次运行。",
     "backToAi": "← 返回 AI 助手",
     "empty": "还没有运行记录。去 AI 助手生成一次试试。",
     "totalRuns": "运行次数",
@@ -311,11 +363,18 @@
     "ttftP50": "首字延迟 P50",
     "satisfaction": "满意度",
     "noFeedback": "暂无反馈",
+    "totalTokens": "Token 总量",
+    "perRun": "/ 次",
+    "cloudCost": "云端费用（估算）",
+    "localSaved": "本地节省（估算）",
+    "savingsRateSuffix": "的云端开销",
+    "costNote": "费用按云端单价估算：输入 ${in}、输出 ${out} / 百万 Token（可用 CLOUD_PRICE_* 环境变量覆盖）。本地调用不计费，“节省”= 本地 Token × 云端单价。免费档的实际费用为 0。",
     "byRoute": "按路由",
     "colRoute": "路由",
     "colRuns": "成功次数",
     "colTtft": "首字 P50 / P95",
     "colTotal": "总耗时 P50 / P95",
+    "colTokens": "平均 Token",
     "latencyNote": "延迟只统计成功的运行，失败和中途停止不计入。",
     "byTask": "按任务",
     "failedSuffix": "次失败",
@@ -325,6 +384,26 @@
     "statusOk": "成功",
     "statusError": "失败",
     "statusAborted": "已停止",
+    "statusBlocked": "已拦截",
+    "guardrailSection": "安全护栏",
+    "guardrailRuns": "触发护栏的运行",
+    "guardrailBlocked": "被拦截",
+    "guardrailEmpty": "最近的运行没有触发护栏。",
+    "guardrailRules": {
+      "input_too_long": "输入超长",
+      "history_trimmed": "历史截断",
+      "prompt_injection": "提示词注入",
+      "sensitive_reroute": "敏感信息改走本地",
+      "sensitive_redact": "敏感信息脱敏",
+      "run_timeout": "运行超时",
+      "tool_not_allowed": "未授权工具",
+      "tool_call_cap": "工具调用超限",
+      "tool_invalid_args": "工具参数无效",
+      "ungrounded_facts": "未核实的事实",
+      "missing_sections": "缺少章节",
+      "plan_schema_invalid": "结构化输出失败",
+      "output_secret": "输出含密钥"
+    },
     "fellBack": "已降级",
     "tools": "工具",
     "ttft": "首字",

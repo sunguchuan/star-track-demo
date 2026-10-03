@@ -85,6 +85,21 @@ export function getBatchById(batchId: string): FabBatch | null {
   return row ? mapBatch(row) : null;
 }
 
+export function listAlertsForBatch(batchId: string): FabAlert[] {
+  const db = getFabDb();
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.tool_id, t.name AS tool_name, a.batch_id, a.severity,
+              a.code, a.message, a.created_at, a.acknowledged
+       FROM alerts a
+       JOIN tools t ON t.id = a.tool_id
+       WHERE a.batch_id = ?
+       ORDER BY a.created_at DESC`,
+    )
+    .all(batchId) as AlertRow[];
+  return rows.map(mapAlert);
+}
+
 export function listAlerts(options?: {
   limit?: number;
   openOnly?: boolean;

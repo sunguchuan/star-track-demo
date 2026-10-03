@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# eval reports (npm run eval); evals/baseline.json is committed
+/evals/results/
+
 # local SQLite (auto-seeded / npm run seed:fab)
 /data/*.db
 /data/*.db-*

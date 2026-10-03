@@ -275,13 +275,50 @@
     "toolCalls": "Tool calls",
     "toolOk": "ok",
     "toolFail": "failed",
-    "investigateHint": "e.g. Etch Chamber B7 yield drop — check alerts and draft an Action Plan",
+    "guardrails": "Guardrails",
+    "guardrailStages": {
+      "input": "Input",
+      "resource": "Resource",
+      "tool": "Tool",
+      "output": "Output"
+    },
+    "guardrailActions": {
+      "block": "Blocked",
+      "warn": "Warning",
+      "redact": "Redacted",
+      "reroute": "Kept local",
+      "trim": "Trimmed"
+    },
     "feedbackPrompt": "Was this helpful?",
     "feedbackUp": "Helpful",
     "feedbackDown": "Not helpful",
     "feedbackSaved": "Feedback saved, thanks",
     "feedbackFailed": "Could not save feedback",
+    "plan": {
+      "pending": "Data ready — generating the Action Plan (shown once complete)…",
+      "summary": "Conclusion",
+      "findings": "Symptoms (facts)",
+      "causes": "Likely causes",
+      "actions": "Next actions",
+      "dataToConfirm": "Data to confirm",
+      "confidence": {
+        "high": "Likely",
+        "medium": "Possible",
+        "low": "Unlikely"
+      },
+      "ungroundedRef": "Not found in the tool data — verify manually"
+    },
+    "usage": {
+      "tokens": "Tokens",
+      "in": "in",
+      "out": "out",
+      "calls": "model calls",
+      "cost": "cloud cost ≈",
+      "saved": "ran locally, saved ≈",
+      "note": "Estimated at the paid cloud rate; local Ollama is free. Free-tier usage actually costs $0."
+    },
     "viewRuns": "Runs & metrics →",
+    "fabInvestigateLink": "Fab investigate (FAB page) →",
     "tasks": {
       "summarize": "Summarize",
       "polish": "Polish",
@@ -299,9 +336,24 @@
       "only-cloud": "Cloud only"
     }
   },
+  "fabInvestigate": {
+    "title": "AI line investigation",
+    "intro": "Describe what you see. The agent calls read-only tools for the fab summary, batches, and alerts, then drafts an Action Plan (symptoms / likely causes / next actions / data to confirm).",
+    "viewRuns": "Runs →",
+    "inputLabel": "Investigation question",
+    "placeholder": "e.g. Etch Chamber B7 yield drop — check alerts and draft an Action Plan",
+    "examples": [
+      "Etch Chamber B7 yield is dropping — check alerts and draft an Action Plan",
+      "Why is batch B-240909-01 below the control limit?",
+      "Which critical alerts are still open? Prioritize next actions"
+    ],
+    "run": "Investigate",
+    "running": "Investigating…",
+    "shortcutHint": "Ctrl + Enter to send · Cloud by default, falls back to local if cloud is unavailable"
+  },
   "aiRuns": {
     "title": "AI runs",
-    "intro": "Every call to /api/ai/chat is logged: local vs cloud, whether it fell back, time to first token, total latency, tool calls, and user feedback. Stats cover the latest 500 runs.",
+    "intro": "Every call to /api/ai/chat is logged: local vs cloud, whether it fell back, time to first token, total latency, tool calls, guardrail hits, token usage and cost, and user feedback. Stats cover the latest 500 runs.",
     "backToAi": "← Back to AI assistant",
     "empty": "No runs yet. Generate something in the AI assistant first.",
     "totalRuns": "Runs",
@@ -311,11 +363,18 @@
     "ttftP50": "First token P50",
     "satisfaction": "Helpful",
     "noFeedback": "No feedback yet",
+    "totalTokens": "Tokens",
+    "perRun": "/ run",
+    "cloudCost": "Cloud cost (est.)",
+    "localSaved": "Saved locally (est.)",
+    "savingsRateSuffix": "of cloud spend",
+    "costNote": "Costs are estimated at ${in} input / ${out} output per 1M tokens (override with CLOUD_PRICE_* env vars). Local calls are free; \"saved\" = local tokens × cloud price. Free-tier usage actually costs $0.",
     "byRoute": "By route",
     "colRoute": "Route",
     "colRuns": "Successful",
     "colTtft": "First token P50 / P95",
     "colTotal": "Total P50 / P95",
+    "colTokens": "Avg tokens",
     "latencyNote": "Latency counts successful runs only; errors and stopped runs are excluded.",
     "byTask": "By task",
     "failedSuffix": "failed",
@@ -325,6 +384,26 @@
     "statusOk": "ok",
     "statusError": "error",
     "statusAborted": "stopped",
+    "statusBlocked": "blocked",
+    "guardrailSection": "Guardrails",
+    "guardrailRuns": "Runs with guardrail hits",
+    "guardrailBlocked": "blocked",
+    "guardrailEmpty": "No guardrail hits in recent runs.",
+    "guardrailRules": {
+      "input_too_long": "Input too long",
+      "history_trimmed": "History trimmed",
+      "prompt_injection": "Prompt injection",
+      "sensitive_reroute": "Sensitive → local",
+      "sensitive_redact": "Sensitive redacted",
+      "run_timeout": "Run timeout",
+      "tool_not_allowed": "Tool not allowed",
+      "tool_call_cap": "Tool call cap",
+      "tool_invalid_args": "Invalid tool args",
+      "ungrounded_facts": "Ungrounded facts",
+      "missing_sections": "Missing sections",
+      "plan_schema_invalid": "Structured output failed",
+      "output_secret": "Secret in output"
+    },
     "fellBack": "fell back",
     "tools": "tools",
     "ttft": "first token",

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      judge:
+        description: "Also score answers with the LLM judge"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "0 9 * * *"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, test, build, guardrail smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Start app
+        run: |
+          npx next start -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/fab/summary > /dev/null && exit 0
+            sleep 2
+          done
+          cat server.log
+          exit 1
+      # Blocked cases never reach a model, so this needs no API key or Ollama.
+      - run: npm run eval -- --guards-only
+      - if: failure()
+        run: cat server.log
+
+  eval:
+    name: Golden-set eval (cloud model)
+    needs: check
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}
+      CLOUD_MODEL: ${{ vars.CLOUD_MODEL || 'gemini-3.1-flash-lite' }}
+      EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
+      AI_FORCE_CLOUD: "1"
+      AI_RATE_LIMIT_PER_MIN: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start app
+        run: |
+          npx next start -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/fab/summary > /dev/null && exit 0
+            sleep 2
+          done
+          cat server.log
+          exit 1
+      - name: Run eval
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.judge }}" = "true" ]; then
+            npm run eval -- --strategy only-cloud --judge --delay 2000
+          else
+            npm run eval -- --strategy only-cloud --delay 2000
+          fi
+      - name: Job summary
+        if: always()
+        run: |
+          [ -f evals/results/latest.md ] && cat evals/results/latest.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: |
+            evals/results/
+            server.log

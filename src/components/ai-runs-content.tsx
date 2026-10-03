@@ -1,5 +1,7 @@
 "use client";
 
+import { formatTokens, formatUsd } from "@/lib/ai/format";
+import type { ModelPrice } from "@/lib/ai/pricing";
 import type { AiRunRecord, AiRunStats, LatencyStats } from "@/lib/ai/runs";
 import { useLocale } from "@/lib/i18n/locale-context";
 import Link from "next/link";
@@ -21,22 +23,37 @@ function pair(a: number | null, b: number | null): string {
 export function AiRunsContent({
   stats,
   runs,
+  price,
 }: {
   stats: AiRunStats;
   runs: AiRunRecord[];
+  price: ModelPrice;
 }) {
   const { t, locale } = useLocale();
   const copy = t.aiRuns;
   const rated = stats.feedbackUp + stats.feedbackDown;
+  const { usage } = stats;
+  const costNote = copy.costNote
+    .replace("{in}", String(price.inputPerM))
+    .replace("{out}", String(price.outputPerM));
 
   const statusLabel = (status: AiRunRecord["status"]) =>
     status === "ok"
       ? copy.statusOk
       : status === "aborted"
         ? copy.statusAborted
-        : copy.statusError;
+        : status === "blocked"
+          ? copy.statusBlocked
+          : copy.statusError;
 
-  const routeRows: { key: "local" | "cloud"; label: string; data: LatencyStats }[] = [
+  const ruleLabel = (rule: string) =>
+    (copy.guardrailRules as Record<string, string>)[rule] ?? rule;
+
+  const routeRows: {
+    key: "local" | "cloud";
+    label: string;
+    data: LatencyStats & { avgTokens: number | null };
+  }[] = [
     { key: "local", label: copy.viaLocal, data: stats.byVia.local },
     { key: "cloud", label: copy.viaCloud, data: stats.byVia.cloud },
   ];
@@ -82,7 +99,30 @@ export function AiRunsContent({
               value={rated === 0 ? copy.noFeedback : pct(stats.feedbackUp, rated)}
               hint={rated === 0 ? undefined : `${stats.feedbackUp} / ${rated}`}
             />
+            <Stat
+              label={copy.totalTokens}
+              value={formatTokens(usage.promptTokens + usage.completionTokens)}
+              hint={
+                usage.avgTokensPerRun == null
+                  ? undefined
+                  : `${formatTokens(usage.avgTokensPerRun)} ${copy.perRun}`
+              }
+            />
+            <Stat
+              label={copy.cloudCost}
+              value={formatUsd(usage.costUsd)}
+            />
+            <Stat
+              label={copy.localSaved}
+              value={formatUsd(usage.savedUsd)}
+              hint={
+                usage.savingsRate == null
+                  ? undefined
+                  : `${Math.round(usage.savingsRate * 100)}% ${copy.savingsRateSuffix}`
+              }
+            />
           </section>
+          <p className="mt-2 text-xs text-zinc-500">{costNote}</p>
 
           <section className="mt-8">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-violet-700">
@@ -96,6 +136,7 @@ export function AiRunsContent({
                     <th className="px-3 py-2 font-medium">{copy.colRuns}</th>
                     <th className="px-3 py-2 font-medium">{copy.colTtft}</th>
                     <th className="px-3 py-2 font-medium">{copy.colTotal}</th>
+                    <th className="px-3 py-2 font-medium">{copy.colTokens}</th>
                   </tr>
                 </thead>
                 <tbody className="tabular-nums text-violet-950">
@@ -110,6 +151,9 @@ export function AiRunsContent({
                       </td>
                       <td className="px-3 py-2">
                         {pair(row.data.totalP50, row.data.totalP95)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {formatTokens(row.data.avgTokens)}
                       </td>
                     </tr>
                   ))}
@@ -146,9 +190,70 @@ export function AiRunsContent({
                       </span>
                     )}
                   </span>
+                  <span className="w-28 shrink-0 text-right text-xs tabular-nums text-zinc-500">
+                    {row.avgTokens == null
+                      ? "—"
+                      : `${formatTokens(row.avgTokens)} ${copy.perRun}`}
+                    {row.costUsd > 0 && (
+                      <span className="block">{formatUsd(row.costUsd)}</span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="mt-8">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-violet-700">
+              {copy.guardrailSection}
+            </h2>
+            <div className="rounded-xl border border-violet-100 bg-white p-3">
+              <p className="text-sm text-violet-950">
+                {copy.guardrailRuns}{" "}
+                <span className="font-semibold tabular-nums">
+                  {stats.guardrailRunCount}
+                </span>{" "}
+                <span className="text-zinc-500">
+                  ({pct(stats.guardrailRunCount, stats.total)})
+                </span>
+                {" · "}
+                {copy.guardrailBlocked}{" "}
+                <span className="font-semibold tabular-nums">
+                  {stats.blockedCount}
+                </span>
+              </p>
+              {stats.byGuardrail.length === 0 ? (
+                <p className="mt-2 text-xs text-zinc-500">{copy.guardrailEmpty}</p>
+              ) : (
+                <ul className="mt-2 space-y-1.5">
+                  {stats.byGuardrail.map((g) => (
+                    <li
+                      key={`${g.stage}:${g.rule}:${g.action}`}
+                      className="flex items-center gap-2 text-sm text-violet-950"
+                    >
+                      <span className="w-12 shrink-0 text-xs text-zinc-500">
+                        {t.aiPage.guardrailStages[g.stage]}
+                      </span>
+                      <span className="flex-1 truncate">{ruleLabel(g.rule)}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          g.action === "block"
+                            ? "bg-red-100 text-red-700"
+                            : g.action === "warn"
+                              ? "bg-amber-100 text-amber-900"
+                              : "bg-sky-100 text-sky-800"
+                        }`}
+                      >
+                        {t.aiPage.guardrailActions[g.action]}
+                      </span>
+                      <span className="w-8 shrink-0 text-right tabular-nums">
+                        {g.count}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </section>
 
           <section className="mt-8">
@@ -178,7 +283,9 @@ export function AiRunsContent({
                           ? "bg-emerald-50 text-emerald-700"
                           : run.status === "aborted"
                             ? "bg-zinc-100 text-zinc-600"
-                            : "bg-red-100 text-red-700"
+                            : run.status === "blocked"
+                              ? "bg-orange-100 text-orange-800"
+                              : "bg-red-100 text-red-700"
                       }`}
                     >
                       {statusLabel(run.status)}
@@ -205,7 +312,31 @@ export function AiRunsContent({
                     {copy.ttft} {formatMs(run.ttftMs)} · {copy.total}{" "}
                     {formatMs(run.totalMs)}
                     {run.toolCalls > 0 && ` · ${copy.tools} ${run.toolCalls}`}
+                    {run.usage &&
+                      ` · ${formatTokens(run.usage.promptTokens + run.usage.completionTokens)} tokens`}
+                    {run.usage && run.usage.costUsd > 0 && ` · ${formatUsd(run.usage.costUsd)}`}
+                    {run.usage &&
+                      run.usage.savedUsd > 0 &&
+                      ` · ${copy.localSaved} ${formatUsd(run.usage.savedUsd)}`}
                   </p>
+                  {run.guardrails.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {run.guardrails.map((g, index) => (
+                        <span
+                          key={`${g.rule}-${index}`}
+                          className={`rounded px-1.5 py-0.5 text-[11px] ${
+                            g.action === "block"
+                              ? "bg-red-50 text-red-700"
+                              : g.action === "warn"
+                                ? "bg-amber-50 text-amber-800"
+                                : "bg-sky-50 text-sky-800"
+                          }`}
+                        >
+                          {ruleLabel(g.rule)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-1 text-xs text-zinc-400">
                     <time dateTime={run.createdAt} suppressHydrationWarning>
                       {new Date(run.createdAt).toLocaleString(
