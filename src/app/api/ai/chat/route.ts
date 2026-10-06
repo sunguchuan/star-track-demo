@@ -6,14 +6,27 @@
  * 2. Input guardrails: sanitize, length/history limits, prompt-injection block,
  *    sensitive data → reroute to local or redact before cloud
  * 3. Detect runtime + route (local Ollama vs cloud)
- * 4. Build prompt messages (or run investigate agent with tools)
- * 5. Stream model output over SSE under a run timeout; fall back local⇄cloud when needed
+ * 4. Answer cache: replay an exact / semantically equivalent earlier answer when allowed
+ * 5. Build prompt messages (or run investigate agent with tools); stream model output over
+ *    SSE under a run timeout; fall back local⇄cloud when needed
  * 6. Output guardrails, token usage / cost, then push done
- * 7. Record the run (route, fallback, latency, tools, guardrails, tokens, cost) for /ai/runs
+ * 7. Record the run (route, fallback, latency, tools, guardrails, tokens, cost, cache) and
+ *    its span tree for /ai/runs; store clean answers in the cache; export the trace to
+ *    Langfuse after the response when configured
  */
 import { randomUUID } from "crypto";
-import { streamCloudChat } from "@/lib/ai/cloud";
+import { after } from "next/server";
 import {
+  buildCacheContext,
+  cacheModeFor,
+  storeSkipReason,
+  type CacheContext,
+} from "@/lib/ai/cache-keys";
+import { streamCloudChat } from "@/lib/ai/cloud";
+import { assessDifficulty, type ModelTier } from "@/lib/ai/difficulty";
+import type { Embedding } from "@/lib/ai/embeddings";
+import {
+  shouldDowngradeTier,
   shouldFallbackToCloud,
   shouldFallbackToLocal,
   toProviderError,
@@ -30,18 +43,24 @@ import {
   clientKeyFromRequest,
   RUN_TIMEOUT_MS,
 } from "@/lib/ai/guardrails/resource";
+import { isLangfuseEnabled, type TraceExportMeta } from "@/lib/ai/langfuse-config";
 import { streamOllamaChat } from "@/lib/ai/ollama";
 import { UsageMeter } from "@/lib/ai/pricing";
 import { buildMessages } from "@/lib/ai/prompts";
 import {
   getCloudModel,
   getLocalModel,
+  getStrongCloudModel,
   isCloudConfigured,
   isLocalAiRuntime,
+  isStrongModelCoolingDown,
+  noteStrongModelFailure,
   resolveRoute,
 } from "@/lib/ai/router";
-import type { AiRunGuardrail, AiRunStatus } from "@/lib/ai/runs";
+import type { AiRunCache, AiRunGuardrail, AiRunStatus } from "@/lib/ai/runs";
+import type { CachedPlan } from "@/lib/ai/semantic-cache";
 import { createSseResponse, sseEncode } from "@/lib/ai/sse";
+import { recordGuardrails, RunTrace, traceStream } from "@/lib/ai/trace";
 import type {
   AiRouteTarget,
   AiStrategy,
@@ -82,6 +101,8 @@ type ParsedBody = {
   strategy: AiStrategy;
   /** Raw; validated by the input guardrails. */
   messages: unknown;
+  /** false = regenerate: skip the cache lookup (the fresh answer still replaces the entry). */
+  cache: boolean;
 };
 
 /** Step 1 — Validate and normalize the JSON body from the client */
@@ -102,6 +123,7 @@ function parseBody(raw: unknown): ParsedBody | null {
         ? (body.strategy as AiStrategy)
         : "auto",
     messages: body.messages,
+    cache: body.cache !== false,
   };
 }
 
@@ -142,6 +164,22 @@ async function* runInvestigateAgent(
   yield* agent.runInvestigateAgent(options);
 }
 
+/** Investigate answers depend on the FAB tables and the knowledge base; other tasks only on their input. */
+async function cacheDataVersion(taskType: AiTaskType): Promise<string> {
+  if (taskType !== "investigate") return "-";
+  const { getFabDataVersion } = await import("@/lib/fab/queries");
+  const { isKnowledgeEnabled } = await import("@/lib/ai/tools/knowledge");
+  if (!isKnowledgeEnabled()) return getFabDataVersion();
+  const { getCorpusVersion } = await import("@/lib/rag/retrieve");
+  return `${getFabDataVersion()}+kb:${getCorpusVersion()}`;
+}
+
+function cacheReason(hit: { mode: string; similarity: number | null }): string {
+  return hit.similarity == null
+    ? "相同输入已有结果，直接返回缓存"
+    : `相似问题已有答案（相似度 ${(hit.similarity * 100).toFixed(1)}%），直接返回缓存`;
+}
+
 export async function POST(request: Request) {
   const rate = checkRateLimit(clientKeyFromRequest(request));
   if (!rate.ok) {
@@ -167,6 +205,13 @@ export async function POST(request: Request) {
   }
 
   const { taskType, strategy } = body;
+  const useAgent = taskType === "investigate";
+  const runId = randomUUID();
+  const trace = new RunTrace(runId);
+  const root = trace.start("ai.chat", useAgent ? "agent" : "span", {
+    input: body.input,
+    metadata: { taskType, strategy },
+  });
 
   // Step 2 — Input guardrails
   const guard = runInputGuards({
@@ -178,6 +223,12 @@ export async function POST(request: Request) {
   if (!input) {
     return Response.json({ error: "input 不能为空" }, { status: 400 });
   }
+  recordGuardrails(
+    root,
+    "guardrails.input",
+    guard.blocked ? [...guard.hits, guard.blocked] : guard.hits,
+    { sensitive: describeFindings(guard.sensitive) || null, historyMessages: guard.history.length },
+  );
 
   const sensitive = guard.sensitive;
   const cloudInput = sensitive.length > 0 ? redactSensitive(input) : input;
@@ -193,7 +244,7 @@ export async function POST(request: Request) {
       ? buildMessages(taskType, cloudInput, cloudHistory)
       : buildMessages(taskType, input, guard.history);
 
-  // Step 3 — Route
+  // Step 3 — Route (local vs cloud), plus the difficulty that picks the cloud tier
   const cloudAvailable = isCloudConfigured();
   const localRuntime = isLocalAiRuntime();
   const decision = resolveRoute({
@@ -203,10 +254,39 @@ export async function POST(request: Request) {
     cloudAvailable,
     localRuntime,
   });
+  const difficulty = assessDifficulty({ taskType, input, history: guard.history });
+  const configuredStrong = getStrongCloudModel();
+  const strongCoolingDown = configuredStrong != null && isStrongModelCoolingDown();
+  const strongModel = strongCoolingDown ? null : configuredStrong;
+  /** Complex requests get the strong tier on cloud when one is configured. */
+  const cloudModelFor = () =>
+    difficulty.level === "complex" && strongModel ? strongModel : getCloudModel();
+  root
+    .child("route", "span", {
+      metadata: {
+        strategy,
+        inputChars: input.length,
+        localRuntime,
+        cloudAvailable,
+        difficulty,
+        strongModel: configuredStrong,
+        strongCoolingDown,
+      },
+    })
+    .end({ output: decision });
 
-  const useAgent = taskType === "investigate";
-  const runId = randomUUID();
-  const startedAt = Date.now();
+  const startedAt = trace.spans[0].startedAt;
+  let resolveTraceDone: (meta: TraceExportMeta) => void = () => {};
+  const traceDone = new Promise<TraceExportMeta>((resolve) => {
+    resolveTraceDone = resolve;
+  });
+  if (isLangfuseEnabled()) {
+    after(async () => {
+      const meta = await traceDone;
+      const { exportRunTrace } = await import("@/lib/ai/langfuse");
+      await exportRunTrace(trace, meta);
+    });
+  }
   const runSignal =
     RUN_TIMEOUT_MS > 0
       ? AbortSignal.any([request.signal, AbortSignal.timeout(RUN_TIMEOUT_MS)])
@@ -224,11 +304,23 @@ export async function POST(request: Request) {
       let blocked = false;
       let timeoutReported = false;
       let redactNoticeSent = false;
+      let lastPlan: CachedPlan | null = null;
+      let cacheContext: CacheContext | null = null;
+      let cacheEmbedding: Embedding | null = null;
+      let cacheHit: AiRunCache | null = null;
+      let escalated = false;
       const guardrails: AiRunGuardrail[] = [];
       const meter = new UsageMeter();
 
       const push = (event: StreamEvent) => {
-        if (event.type === "delta") {
+        if (event.type === "meta") {
+          // The agent reports plan-model changes (strong-tier downgrade / escalation).
+          model = event.model;
+          reason = event.reason;
+          if (event.escalated) escalated = true;
+        } else if (event.type === "plan") {
+          lastPlan = { plan: event.plan, ungroundedRefs: event.ungroundedRefs };
+        } else if (event.type === "delta") {
           firstDeltaAt ??= Date.now();
           outputChars += event.text.length;
           outputText += event.text;
@@ -266,6 +358,75 @@ export async function POST(request: Request) {
                 ? "ok"
                 : "error";
         const usage = meter.summary();
+        const totalMs = Date.now() - startedAt;
+        const tier: ModelTier | null =
+          via === "cloud" && !cacheHit && !blocked
+            ? model === strongModel
+              ? "strong"
+              : "standard"
+            : null;
+        if (cacheContext && !cacheHit) {
+          const skip = storeSkipReason({
+            status,
+            outputChars,
+            errorCode: lastErrorCode,
+            sensitive: sensitive.length > 0,
+            guardrailStages: guardrails.map((g) => g.stage),
+            ungroundedRefs: (lastPlan as CachedPlan | null)?.ungroundedRefs.length ?? 0,
+          });
+          if (skip) {
+            root.child("cache.store", "span").end({ metadata: { skipped: skip } });
+          } else {
+            try {
+              const { rememberAnswer } = await import("@/lib/ai/semantic-cache");
+              rememberAnswer({
+                context: cacheContext,
+                embedding: cacheEmbedding,
+                input,
+                target: via,
+                model,
+                output: outputText,
+                plan: lastPlan,
+                sourceRunId: runId,
+                sourceMs: totalMs,
+                sourceCostUsd: usage?.costUsd ?? 0,
+                replaceSimilar: !body.cache,
+                parent: root,
+              });
+            } catch (err) {
+              console.error("[ai/chat] failed to cache answer", err);
+            }
+          }
+        }
+        const tags: string[] = [taskType, via, status];
+        if (fellBack) tags.push("fallback");
+        if (guardrails.length > 0) tags.push("guardrail");
+        if (cacheHit) tags.push(`cache:${cacheHit.mode}`);
+        if (tier) tags.push(`tier:${tier}`);
+        if (escalated) tags.push("escalated");
+        root.update({ target: via, model });
+        root.end({
+          output: outputText,
+          status: status === "ok" ? "ok" : status === "error" ? "error" : "warning",
+          statusMessage: status === "ok" ? null : (lastErrorCode ?? status),
+          metadata: {
+            status,
+            initialTarget,
+            via,
+            model,
+            reason,
+            fellBack,
+            errorCode: lastErrorCode,
+            toolCalls,
+            usage,
+            cache: cacheHit,
+            difficulty: difficulty.level,
+            tier,
+            escalated,
+          },
+        });
+        trace.close();
+        resolveTraceDone({ runId, taskType, status, tags });
         try {
           const { recordRun } = await import("@/lib/ai/runs");
           recordRun({
@@ -281,12 +442,17 @@ export async function POST(request: Request) {
             status,
             errorCode: lastErrorCode,
             ttftMs: firstDeltaAt == null ? null : firstDeltaAt - startedAt,
-            totalMs: Date.now() - startedAt,
+            totalMs,
             inputChars: input.length,
             outputChars,
             toolCalls,
             guardrails,
             usage,
+            cache: cacheHit,
+            difficulty: difficulty.level,
+            tier,
+            escalated,
+            spans: trace.spans,
           });
         } catch (err) {
           console.error("[ai/chat] failed to record run", err);
@@ -301,9 +467,9 @@ export async function POST(request: Request) {
       /** Step 6 — Output guardrails, usage, then done. */
       const pushDone = () => {
         if (!blocked) {
-          for (const hit of checkOutputSecrets(outputText)) {
-            push(guardrailEvent(hit));
-          }
+          const hits = checkOutputSecrets(outputText);
+          recordGuardrails(root, "guardrails.output", hits, { outputChars });
+          for (const hit of hits) push(guardrailEvent(hit));
         }
         const usage = meter.summary();
         if (usage) push({ type: "usage", ...usage });
@@ -313,14 +479,14 @@ export async function POST(request: Request) {
       const reportTimeout = () => {
         if (timeoutReported) return;
         timeoutReported = true;
-        push(
-          guardrailEvent({
-            stage: "resource",
-            rule: "run_timeout",
-            action: "block",
-            message: `运行超过 ${Math.round(RUN_TIMEOUT_MS / 1000)} 秒上限，已停止`,
-          }),
-        );
+        const hit: GuardrailHit = {
+          stage: "resource",
+          rule: "run_timeout",
+          action: "block",
+          message: `运行超过 ${Math.round(RUN_TIMEOUT_MS / 1000)} 秒上限，已停止`,
+        };
+        recordGuardrails(root, "guardrails.resource", [hit], { timeoutMs: RUN_TIMEOUT_MS });
+        push(guardrailEvent(hit));
       };
 
       const noteCloudRedaction = () => {
@@ -343,30 +509,61 @@ export async function POST(request: Request) {
       };
 
       async function runOn(target: AiRouteTarget, runModelName: string) {
+        const attempt = root.child(`attempt.${target}`, "span", {
+          target,
+          model: runModelName,
+          metadata: { fallback: fellBack, redacted: target === "cloud" && sensitive.length > 0 },
+        });
         if (target === "cloud") noteCloudRedaction();
-        const onUsage = (usage: TokenUsage) => meter.add(target, usage);
-        if (useAgent) {
-          for await (const event of runInvestigateAgent({
-            target,
-            model: runModelName,
-            userInput: inputFor(target),
-            signal: runSignal,
-            onUsage,
-          })) {
-            if (runSignal.aborted) break;
-            push(event);
+        const onUsage = (usage: TokenUsage, usedModel?: string | null) =>
+          meter.add(target, usage, usedModel);
+        try {
+          if (useAgent) {
+            // Strong tier writes the Action Plan only; tool selection stays on the fast model.
+            const strongRun = target === "cloud" && strongModel != null && runModelName === strongModel;
+            for await (const event of runInvestigateAgent({
+              target,
+              model: strongRun ? getCloudModel() : runModelName,
+              planModel: strongRun ? strongModel : null,
+              escalationModel: target === "cloud" && !strongRun ? strongModel : null,
+              userInput: inputFor(target),
+              signal: runSignal,
+              onUsage,
+              span: attempt,
+            })) {
+              if (runSignal.aborted) break;
+              push(event);
+            }
+          } else {
+            const messages = messagesFor(target);
+            const generation = attempt.child("llm.chat", "generation", {
+              target,
+              model: runModelName,
+              input: messages.at(-1)?.content ?? "",
+              metadata: { taskType, messages: messages.length },
+            });
+            for await (const text of traceStream(
+              generation,
+              runModel({
+                target,
+                model: runModelName,
+                messages,
+                signal: runSignal,
+                onUsage: generation.usageSink(onUsage),
+              }),
+            )) {
+              if (runSignal.aborted) break;
+              push({ type: "delta", text });
+            }
           }
-        } else {
-          for await (const text of runModel({
-            target,
-            model: runModelName,
-            messages: messagesFor(target),
-            signal: runSignal,
-            onUsage,
-          })) {
-            if (runSignal.aborted) break;
-            push({ type: "delta", text });
-          }
+          attempt.end(
+            runSignal.aborted
+              ? { status: "warning", statusMessage: request.signal.aborted ? "aborted by client" : "run timeout" }
+              : {},
+          );
+        } catch (err) {
+          attempt.fail(toProviderError(err, target));
+          throw err;
         }
       }
 
@@ -416,24 +613,129 @@ export async function POST(request: Request) {
         via = "local";
         model = getLocalModel();
         reason = "检测到敏感信息，已改走本地（数据不出本机）";
-        push(
-          guardrailEvent({
-            stage: "input",
-            rule: "sensitive_reroute",
-            action: "reroute",
-            message: "检测到敏感信息，已改走本地模型，数据不出本机",
-            detail: describeFindings(sensitive),
-          }),
-        );
+        const hit: GuardrailHit = {
+          stage: "input",
+          rule: "sensitive_reroute",
+          action: "reroute",
+          message: "检测到敏感信息，已改走本地模型，数据不出本机",
+          detail: describeFindings(sensitive),
+        };
+        recordGuardrails(root, "guardrails.reroute", [hit]);
+        push(guardrailEvent(hit));
         push({ type: "meta", via, model, reason });
+      }
+
+      // Step 4 — Answer cache (never for sensitive input or chat with history).
+      const cacheMode = cacheModeFor(taskType, guard.history.length > 0);
+      if (cacheMode && sensitive.length === 0) {
+        try {
+          const cache = await import("@/lib/ai/semantic-cache");
+          if (cache.isCacheEnabled()) {
+            cacheContext = buildCacheContext({
+              mode: cacheMode,
+              taskType,
+              input,
+              history: guard.history,
+              strategy,
+              dataVersion: await cacheDataVersion(taskType),
+            });
+            const lookup = await cache.lookupAnswer({
+              context: cacheContext,
+              input,
+              bypass: !body.cache,
+              localRuntime,
+              cloudAvailable,
+              signal: runSignal,
+              parent: root,
+            });
+            cacheEmbedding = lookup.embedding;
+            const hit = lookup.hit;
+            if (hit && !runSignal.aborted) {
+              via = hit.target;
+              model = hit.model;
+              reason = cacheReason(hit);
+              initialTarget = via;
+              const savedMs = Math.max(0, hit.sourceMs - (Date.now() - startedAt));
+              cacheHit = {
+                mode: hit.mode,
+                similarity: hit.similarity,
+                entryId: hit.id,
+                savedMs,
+                savedUsd: hit.sourceCostUsd,
+              };
+              push({ type: "meta", via, model, reason });
+              push({
+                type: "cache",
+                mode: hit.mode,
+                similarity: hit.similarity,
+                entryId: hit.id,
+                sourceRunId: hit.sourceRunId,
+                createdAt: hit.createdAt,
+                savedMs,
+                savedUsd: hit.sourceCostUsd,
+              });
+              if (hit.plan) push({ type: "plan", ...hit.plan });
+              push({ type: "delta", text: hit.output });
+              pushDone();
+              await finish();
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("[ai/chat] cache lookup failed", err);
+        }
       }
       initialTarget = via;
 
+      if (via === "cloud" && model !== cloudModelFor()) {
+        model = cloudModelFor();
+        reason = `${reason}；问题较复杂（${difficulty.signals.join(" + ")}），改用强模型`;
+        push({ type: "meta", via, model, reason });
+      } else if (via === "cloud" && difficulty.level === "complex" && strongCoolingDown) {
+        reason = `${reason}；问题较复杂，但强模型刚出现故障（冷却中），仍用标准模型`;
+        push({ type: "meta", via, model, reason });
+      }
+
       try {
+        let failure: unknown = null;
         try {
           await runOn(via, model);
         } catch (err) {
-          const providerErr = toProviderError(err, via);
+          failure = err;
+        }
+
+        // The agent downgrades its own plan call; plain chat retries the whole call here.
+        if (
+          failure &&
+          !useAgent &&
+          via === "cloud" &&
+          model === strongModel &&
+          outputChars === 0 &&
+          !runSignal.aborted &&
+          shouldDowngradeTier(failure)
+        ) {
+          const providerErr = toProviderError(failure, "cloud");
+          failure = null;
+          noteStrongModelFailure();
+          push({
+            type: "error",
+            message: `强模型${providerErr.message}，正在改用标准模型…`,
+            code: providerErr.code,
+            hint: providerErr.hint,
+            retryable: true,
+          });
+          model = getCloudModel();
+          reason = "强模型不可用，已改用标准云端模型";
+          push({ type: "meta", via, model, reason });
+          try {
+            await runOn("cloud", model);
+          } catch (err) {
+            failure = err;
+          }
+        }
+
+        if (failure) {
+          const providerErr = toProviderError(failure, via);
 
           if (
             via === "local" &&
@@ -441,7 +743,7 @@ export async function POST(request: Request) {
             cloudAvailable &&
             shouldFallbackToCloud(providerErr)
           ) {
-            const cloudModel = getCloudModel();
+            const cloudModel = cloudModelFor();
             push({
               type: "error",
               message: `${providerErr.message}，正在改用云端…`,

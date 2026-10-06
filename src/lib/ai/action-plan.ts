@@ -13,7 +13,7 @@ const refs = z
   .array(z.string().regex(REF_PATTERN))
   .max(6)
   .describe(
-    "Batch IDs (B-…), tool IDs (T-…) or alert codes copied verbatim from the tool results that support this item. [] if none.",
+    "Batch IDs (B-…), tool IDs (T-…), alert codes or knowledge document IDs (RB-…, SOP-…, INC-…, SPEC-…) copied verbatim from the tool results that support this item. [] if none.",
   );
 
 export const ActionPlanSchema = z
@@ -48,6 +48,9 @@ export const ActionPlanSchema = z
           owner: z
             .string()
             .describe("Role responsible, e.g. process / equipment / yield engineer"),
+          refs: refs.describe(
+            "Knowledge document IDs (SOP-…, RB-…, SPEC-…) this action follows, copied verbatim from knowledge search results. [] if none.",
+          ),
         }),
       )
       .max(6)
@@ -76,6 +79,18 @@ export type ParsedPlan =
   | { ok: true; plan: ActionPlan }
   | { ok: false; error: string };
 
+/** Action refs came later: plans from older prompts (and cached answers) omit them. */
+export function withActionRefs<T>(json: T): T {
+  const actions = (json as { actions?: unknown } | null)?.actions;
+  if (!Array.isArray(actions)) return json;
+  return {
+    ...json,
+    actions: actions.map((a) =>
+      a && typeof a === "object" && !Array.isArray((a as { refs?: unknown }).refs) ? { ...a, refs: [] } : a,
+    ),
+  };
+}
+
 export function parseActionPlan(raw: string): ParsedPlan {
   const text = raw
     .trim()
@@ -87,7 +102,7 @@ export function parseActionPlan(raw: string): ParsedPlan {
   } catch (err) {
     return { ok: false, error: `invalid JSON: ${(err as Error).message}` };
   }
-  const result = ActionPlanSchema.safeParse(json);
+  const result = ActionPlanSchema.safeParse(withActionRefs(json));
   if (!result.success) {
     return { ok: false, error: z.prettifyError(result.error) };
   }
@@ -137,7 +152,7 @@ export function renderActionPlan(plan: ActionPlan, language: ReplyLanguage = "zh
   }
   lines.push("", `## ${l.sections[2]}`);
   for (const a of plan.actions) {
-    lines.push(`- ${a.priority} · ${a.text}${a.owner ? l.owner(a.owner) : ""}`);
+    lines.push(`- ${a.priority} · ${withRefs(a.text, a.refs ?? [])}${a.owner ? l.owner(a.owner) : ""}`);
   }
   lines.push("", `## ${l.sections[3]}`);
   for (const d of plan.dataToConfirm) lines.push(`- ${d}`);
@@ -145,7 +160,7 @@ export function renderActionPlan(plan: ActionPlan, language: ReplyLanguage = "zh
 }
 
 export function planRefs(plan: ActionPlan): string[] {
-  const all = [...plan.findings, ...plan.causes].flatMap((item) => item.refs);
+  const all = [...plan.findings, ...plan.causes, ...plan.actions].flatMap((item) => item.refs ?? []);
   return [...new Set(all.map((r) => r.trim()).filter(Boolean))];
 }
 

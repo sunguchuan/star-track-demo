@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { isLocalAiRuntime, resolveRoute } from "@/lib/ai/router";
+import {
+  isLocalAiRuntime,
+  isStrongModelCoolingDown,
+  noteStrongModelFailure,
+  resolveRoute,
+  STRONG_COOLDOWN_MS,
+} from "@/lib/ai/router";
 import { LONG_INPUT_CHARS, type AiStrategy, type AiTaskType } from "@/lib/ai/types";
 
 function route(
@@ -83,5 +89,14 @@ describe("isLocalAiRuntime", () => {
     assert.equal(withEnv({ VERCEL: "1", AI_FORCE_LOCAL: "1" }), true);
     assert.equal(withEnv({ AI_FORCE_CLOUD: "1" }), false);
     assert.equal(withEnv({ AI_FORCE_CLOUD: "1", AI_FORCE_LOCAL: "1" }), false);
+  });
+});
+
+describe("strong model cooldown", () => {
+  it("skips the strong tier for a while after an outage", () => {
+    const now = 1_000_000;
+    noteStrongModelFailure(now);
+    assert.equal(isStrongModelCoolingDown(now + 1), true);
+    assert.equal(isStrongModelCoolingDown(now + STRONG_COOLDOWN_MS), false);
   });
 });

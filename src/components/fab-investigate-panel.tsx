@@ -21,10 +21,10 @@ export function FabInvestigatePanel() {
   const [strategy, setStrategy] = useState<AiStrategy>("auto");
   const { state, start, stop, sendFeedback } = useAiStream(aiCopy);
 
-  function run(nextStrategy: AiStrategy = strategy) {
+  function run(nextStrategy: AiStrategy = strategy, cache = true) {
     const input = question.trim();
     if (!input || state.loading) return;
-    void start({ input, taskType: "investigate", strategy: nextStrategy });
+    void start({ input, taskType: "investigate", strategy: nextStrategy, cache });
   }
 
   function retryLocal() {
@@ -43,12 +43,14 @@ export function FabInvestigatePanel() {
             {copy.intro}
           </p>
         </div>
-        <Link
-          href="/ai/runs"
-          className="shrink-0 text-xs text-violet-700 hover:underline"
-        >
-          {copy.viewRuns}
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Link href="/ai/runs" className="text-xs text-violet-700 hover:underline">
+            {copy.viewRuns}
+          </Link>
+          <Link href="/fab/knowledge" className="text-xs text-violet-700 hover:underline">
+            {copy.knowledgeLab}
+          </Link>
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -127,6 +129,7 @@ export function FabInvestigatePanel() {
           state={state}
           copy={aiCopy}
           onRetryLocal={strategy !== "only-local" ? retryLocal : undefined}
+          onRegenerate={() => run(strategy, false)}
           onFeedback={(score) => void sendFeedback(score)}
         />
       </div>

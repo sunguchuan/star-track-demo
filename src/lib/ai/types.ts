@@ -51,10 +51,27 @@ export type GuardrailHit = {
   detail?: string;
 };
 
+export type KnowledgeSource = {
+  docId: string;
+  title: string;
+  heading: string;
+  /** Reranker score 0–3; null when the results were not reranked. */
+  relevance: number | null;
+  /** Which retrievers found it: bm25 / vector. */
+  matchedBy: string[];
+};
+
 export type StreamEvent =
   | { type: "run"; id: string }
   | ({ type: "guardrail" } & GuardrailHit)
-  | { type: "meta"; via: AiRouteTarget; model: string; reason: string }
+  | {
+      type: "meta";
+      via: AiRouteTarget;
+      model: string;
+      reason: string;
+      /** The standard model's Action Plan failed checks and was retried on the strong tier. */
+      escalated?: boolean;
+    }
   | {
       type: "tool_call";
       id: string;
@@ -67,6 +84,20 @@ export type StreamEvent =
       name: string;
       ok: boolean;
       preview: string;
+      /** Knowledge search: the document sections passed to the model. */
+      sources?: KnowledgeSource[];
+    }
+  | {
+      /** The answer is replayed from the cache; no model is called. */
+      type: "cache";
+      mode: "exact" | "semantic";
+      similarity: number | null;
+      entryId: string;
+      sourceRunId: string;
+      /** epoch ms of the original answer */
+      createdAt: number;
+      savedMs: number;
+      savedUsd: number;
     }
   | { type: "plan"; plan: ActionPlan; ungroundedRefs: string[] }
   | { type: "delta"; text: string }

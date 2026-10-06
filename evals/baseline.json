@@ -1,9 +1,9 @@
 {
   "meta": {
-    "date": "2026-10-03T00:06:25.749Z",
+    "date": "2026-10-04T23:30:09.521Z",
     "baseUrl": "http://localhost:3000",
     "strategy": "auto",
-    "cases": 17,
+    "cases": 21,
     "models": [
       "gemini-3.1-flash-lite",
       "gemma4:latest"
@@ -12,14 +12,18 @@
     "golden": "evals/fab-golden.json"
   },
   "metrics": {
-    "total": 17,
-    "passed": 16,
-    "passRate": 0.9411764705882353,
+    "total": 21,
+    "passed": 21,
+    "passRate": 1,
     "safetyPassRate": 1,
     "byCategory": {
       "investigate": {
         "total": 8,
-        "passed": 7
+        "passed": 8
+      },
+      "knowledge": {
+        "total": 4,
+        "passed": 4
       },
       "robustness": {
         "total": 2,
@@ -38,39 +42,39 @@
         "passed": 1
       }
     },
-    "mentionRecall": 0.9444444444444444,
+    "mentionRecall": 1,
     "groundedRate": 1,
     "sectionsRate": 1,
     "structuredRate": 1,
     "completionRate": 1,
     "usage": {
-      "runs": 13,
-      "promptTokens": 31020,
-      "completionTokens": 7504,
-      "avgTokens": 2963,
-      "modelCalls": 25,
-      "costUsd": 0.01644475,
-      "savedUsd": 0.00256625,
-      "avgCostUsd": 0.0012649807692307693
+      "runs": 17,
+      "promptTokens": 47592,
+      "completionTokens": 12255,
+      "avgTokens": 3520,
+      "modelCalls": 41,
+      "costUsd": 0.027552749999999994,
+      "savedUsd": 0.00272775,
+      "avgCostUsd": 0.0016207499999999996
     },
     "fallbacks": 0,
     "via": {
       "local": 1,
-      "cloud": 12
+      "cloud": 16
     },
     "latency": {
-      "ttftP50": 5957,
-      "ttftP95": 62843,
-      "totalP50": 5957,
-      "totalP95": 62843
+      "ttftP50": 19604,
+      "ttftP95": 72349,
+      "totalP50": 19604,
+      "totalP95": 72349
     },
     "judge": {
-      "judged": 13,
+      "judged": 17,
       "errors": 0,
-      "faithfulness": 0.9743589743589745,
-      "keyFindingRecall": 0.9102564102564101,
-      "relevance": 4.6923076923076925,
-      "actionability": 4.6923076923076925
+      "faithfulness": 1,
+      "keyFindingRecall": 0.965686274509804,
+      "relevance": 4.9411764705882355,
+      "actionability": 5
     }
   },
   "cases": {
@@ -84,7 +88,7 @@
       "pass": true
     },
     "cd-outlier-link": {
-      "pass": false
+      "pass": true
     },
     "litho-status": {
       "pass": true
@@ -96,6 +100,18 @@
       "pass": true
     },
     "product-line-compare": {
+      "pass": true
+    },
+    "kb-particle-procedure": {
+      "pass": true
+    },
+    "kb-rf-drift-acked": {
+      "pass": true
+    },
+    "kb-wet-clean-release": {
+      "pass": true
+    },
+    "kb-no-document": {
       "pass": true
     },
     "unknown-batch": {

@@ -1,0 +1,45 @@
+{
+  "description": "Semantic cache calibration. Each pair is two questions in the same task and language (the cache never compares across tasks or languages). expect=hit: the cached answer to `a` is a correct answer to `b`. expect=miss: serving it would be wrong. kind: paraphrase | entity (different tool / batch / line) | direction (rise vs drop) | number | intent (same entities, different question) | unrelated.",
+  "pairs": [
+    { "kind": "paraphrase", "expect": "hit", "a": "Etch Chamber B7 良率为什么下降？", "b": "B7 刻蚀腔良率下滑的原因是什么" },
+    { "kind": "paraphrase", "expect": "hit", "a": "Etch Chamber B7 最近良率下滑，帮我查告警并给 Action Plan", "b": "B7 良率在往下掉，查一下告警，给个行动计划" },
+    { "kind": "paraphrase", "expect": "hit", "a": "当前未关闭的严重告警有哪些？", "b": "现在还有哪些严重告警没关闭" },
+    { "kind": "paraphrase", "expect": "hit", "a": "批次 B-240909-01 为什么低于控制限？", "b": "B-240909-01 这个批次为啥跌破控制限了" },
+    { "kind": "paraphrase", "expect": "hit", "a": "Litho Scanner A1 目前有什么需要注意的？", "b": "A1 光刻机现在有什么要关注的问题吗" },
+    { "kind": "paraphrase", "expect": "hit", "a": "A 班和 B 班的良率有明显差异吗？", "b": "A 班 B 班之间良率差别大不大" },
+    { "kind": "paraphrase", "expect": "hit", "a": "Why is chamber B7 yield dropping?", "b": "What is causing the yield drop on chamber B7?" },
+    { "kind": "paraphrase", "expect": "hit", "a": "Which critical alerts are still open?", "b": "List the open critical alerts" },
+    { "kind": "paraphrase", "expect": "hit", "a": "Is the CD anomaly on CD-SEM C3 related to the etch issue?", "b": "Does the CD-SEM C3 CD anomaly have anything to do with the etch problem?" },
+    { "kind": "paraphrase", "expect": "hit", "task": "chat", "a": "什么是 OEE？", "b": "OEE 是什么意思" },
+    { "kind": "paraphrase", "expect": "hit", "task": "chat", "a": "What does SPC stand for in manufacturing?", "b": "In manufacturing, what is SPC?" },
+
+    { "kind": "entity", "expect": "miss", "a": "Etch Chamber B7 良率为什么下降？", "b": "Etch Chamber B9 良率为什么下降？" },
+    { "kind": "entity", "expect": "miss", "a": "批次 B-240909-01 为什么低于控制限？", "b": "批次 B-240915-01 为什么低于控制限？" },
+    { "kind": "entity", "expect": "miss", "a": "Litho Scanner A1 目前有什么需要注意的？", "b": "Litho Scanner A2 目前有什么需要注意的？" },
+    { "kind": "entity", "expect": "miss", "a": "NAND-V8 产品线的良率情况怎么样？", "b": "DRAM-1z 产品线的良率情况怎么样？" },
+    { "kind": "entity", "expect": "miss", "a": "A 班的良率怎么样？", "b": "B 班的良率怎么样？" },
+    { "kind": "entity", "expect": "miss", "a": "Why is chamber B7 yield dropping?", "b": "Why is chamber B9 yield dropping?" },
+
+    { "kind": "direction", "expect": "miss", "a": "Etch Chamber B7 良率为什么下降？", "b": "Etch Chamber B7 良率为什么上升？" },
+    { "kind": "direction", "expect": "miss", "a": "B7 的报废数为什么增加了？", "b": "B7 的报废数为什么减少了？" },
+    { "kind": "direction", "expect": "miss", "a": "Why did B7 yield go down last week?", "b": "Why did B7 yield go up last week?" },
+
+    { "kind": "number", "expect": "miss", "a": "列出最近 5 个批次的良率", "b": "列出最近 10 个批次的良率" },
+    { "kind": "number", "expect": "miss", "a": "最近三天有哪些严重告警？", "b": "最近七天有哪些严重告警？" },
+    { "kind": "number", "expect": "miss", "a": "Show yield for the last 3 batches on B7", "b": "Show yield for the last 8 batches on B7" },
+    { "kind": "number", "expect": "miss", "a": "良率低于 90% 的批次有哪些？", "b": "良率低于 95% 的批次有哪些？" },
+
+    { "kind": "intent", "expect": "miss", "a": "Etch Chamber B7 良率为什么下降？", "b": "Etch Chamber B7 现在的良率是多少？" },
+    { "kind": "intent", "expect": "miss", "a": "Etch Chamber B7 良率为什么下降？", "b": "Etch Chamber B7 有哪些告警？" },
+    { "kind": "intent", "expect": "miss", "a": "当前未关闭的严重告警有哪些？", "b": "当前未关闭的严重告警该怎么处理？" },
+    { "kind": "intent", "expect": "miss", "a": "批次 B-240915-01 的良率是多少？", "b": "批次 B-240915-01 是在哪台设备上跑的？" },
+    { "kind": "intent", "expect": "miss", "a": "Why is chamber B7 yield dropping?", "b": "Which alerts are open on chamber B7?" },
+    { "kind": "intent", "expect": "miss", "a": "Which critical alerts are still open?", "b": "Which critical alerts were closed this week?" },
+    { "kind": "intent", "expect": "miss", "task": "chat", "a": "什么是 OEE？", "b": "怎么提高 OEE？" },
+    { "kind": "intent", "expect": "miss", "task": "chat", "a": "What does SPC stand for in manufacturing?", "b": "How do I set SPC control limits?" },
+
+    { "kind": "unrelated", "expect": "miss", "a": "Etch Chamber B7 良率为什么下降？", "b": "今天食堂吃什么" },
+    { "kind": "unrelated", "expect": "miss", "a": "当前未关闭的严重告警有哪些？", "b": "帮我写一首关于秋天的诗" },
+    { "kind": "unrelated", "expect": "miss", "a": "Why is chamber B7 yield dropping?", "b": "Write a haiku about autumn" }
+  ]
+}

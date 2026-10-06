@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "description": "知识库检索标准测试题（npm run eval:rag）。relevant 是能回答该问题的章节 ID（文档 ID#章节标题，见 data/kb），为空表示知识库里没有答案、检索应当返回空（只有重排序能做到）。category：keyword 关键词 / 编号精确匹配，semantic 换一种说法，crosslingual 中英文交叉，filter 带元数据过滤，negative 无答案。",
+  "queries": [
+    {
+      "id": "kw-gas-trigger",
+      "category": "keyword",
+      "query": "ETCH-GAS-RATIO 什么情况下触发",
+      "relevant": ["RB-ETCH-GAS-RATIO#触发条件"]
+    },
+    {
+      "id": "kw-sop021-steps",
+      "category": "keyword",
+      "query": "SOP-ETCH-021 校准步骤",
+      "relevant": ["SOP-ETCH-021#校准步骤"]
+    },
+    {
+      "id": "kw-cf4-limit",
+      "category": "keyword",
+      "query": "CF4/O2 流量比的规格上限是多少",
+      "relevant": ["SPEC-ETCH-B7#工艺参数", "RB-ETCH-GAS-RATIO#触发条件"]
+    },
+    {
+      "id": "kw-leak-rate",
+      "category": "keyword",
+      "query": "腔体漏率 leak rate 要求",
+      "relevant": ["SOP-ETCH-012#作业步骤"]
+    },
+    {
+      "id": "kw-pm-interval",
+      "category": "keyword",
+      "query": "B7 的 PM 周期是多少 RF 小时",
+      "relevant": ["SPEC-ETCH-B7#维护周期", "INC-2506-02#处理措施"]
+    },
+    {
+      "id": "sem-particle-first",
+      "category": "semantic",
+      "query": "腔体里掉渣污染了晶圆，第一时间该做什么",
+      "relevant": ["RB-ETCH-PARTICLE#立即动作"]
+    },
+    {
+      "id": "sem-clean-release",
+      "category": "semantic",
+      "query": "清洗完腔体之后，满足什么条件才能重新投产",
+      "relevant": ["SOP-ETCH-012#放行检查", "RB-ETCH-PARTICLE#放行标准"]
+    },
+    {
+      "id": "sem-rf-consequence",
+      "category": "semantic",
+      "query": "射频功率不稳定会带来什么后果",
+      "relevant": ["RB-ETCH-RF-DRIFT#风险与关联现象"]
+    },
+    {
+      "id": "sem-b7-history",
+      "category": "semantic",
+      "query": "B7 以前有没有因为颗粒导致良率下降的事故，根因是什么",
+      "relevant": ["INC-2506-02#根因", "INC-2506-02#事件经过"]
+    },
+    {
+      "id": "sem-cd-false-alarm",
+      "category": "semantic",
+      "query": "CD 告警会不会是量测设备自己出错",
+      "relevant": ["RB-CD-OUTLIER#第一步：排除量测问题", "INC-2603-01#根因"]
+    },
+    {
+      "id": "sem-8d-owner",
+      "category": "semantic",
+      "query": "良率异常时谁负责牵头写 8D",
+      "relevant": ["SOP-YLD-003#角色分工"]
+    },
+    {
+      "id": "sem-two-lots-low",
+      "category": "semantic",
+      "query": "连续两批良率都低于控制限要怎么升级处理",
+      "relevant": ["SOP-YLD-003#分级"]
+    },
+    {
+      "id": "sem-edge-ring-map",
+      "category": "semantic",
+      "query": "晶圆缺陷图是边缘一圈的，说明什么问题",
+      "relevant": ["RB-ETCH-PARTICLE#常见根因", "RB-ETCH-YIELD-DROP#处理流程", "INC-2506-02#根因"]
+    },
+    {
+      "id": "sem-gas-cd-impact",
+      "category": "semantic",
+      "query": "气体配比偏高对关键尺寸有什么影响",
+      "relevant": ["RB-ETCH-GAS-RATIO#影响", "RB-CD-OUTLIER#第二步：追溯上游工艺"]
+    },
+    {
+      "id": "sem-pm-delay",
+      "category": "semantic",
+      "query": "预防性维护最多可以推迟多久",
+      "relevant": ["RB-PM-DUE#处理要求"]
+    },
+    {
+      "id": "sem-yield-recovery",
+      "category": "semantic",
+      "query": "良率跌破控制限以后，什么条件下可以恢复量产",
+      "relevant": ["RB-ETCH-YIELD-DROP#恢复条件", "SOP-YLD-003#关闭条件"]
+    },
+    {
+      "id": "xl-en-leak-rate",
+      "category": "crosslingual",
+      "query": "What leak rate is required after a chamber wet clean?",
+      "relevant": ["SOP-ETCH-012#作业步骤"]
+    },
+    {
+      "id": "xl-en-particle-first",
+      "category": "crosslingual",
+      "query": "What should I do immediately when particle counts spike on the etch chamber?",
+      "relevant": ["RB-ETCH-PARTICLE#立即动作"]
+    },
+    {
+      "id": "xl-en-incident-root",
+      "category": "crosslingual",
+      "query": "What was the root cause of the earlier chamber B7 yield incident?",
+      "relevant": ["INC-2506-02#根因"]
+    },
+    {
+      "id": "xl-zh-overlay-spec",
+      "category": "crosslingual",
+      "query": "光刻机保养后套刻误差要达到多少才能放行",
+      "relevant": ["SOP-LITHO-004#Requalification steps"]
+    },
+    {
+      "id": "xl-zh-overlay-fail",
+      "category": "crosslingual",
+      "query": "扫描仪套刻验证连续失败怎么办",
+      "relevant": ["SOP-LITHO-004#Release"]
+    },
+    {
+      "id": "flt-incident",
+      "category": "filter",
+      "query": "颗粒 良率下降",
+      "filter": { "docType": "incident" },
+      "relevant": ["INC-2506-02#根因", "INC-2506-02#事件经过"]
+    },
+    {
+      "id": "flt-rf-steps",
+      "category": "filter",
+      "query": "处置步骤",
+      "filter": { "alertCode": "ETCH-RF-DRIFT" },
+      "relevant": ["RB-ETCH-RF-DRIFT#排查步骤", "SOP-ETCH-021#校准步骤"]
+    },
+    {
+      "id": "neg-canteen",
+      "category": "negative",
+      "query": "公司食堂几点开饭",
+      "relevant": []
+    },
+    {
+      "id": "neg-euv-power",
+      "category": "negative",
+      "query": "EUV 光刻机光源功率是多少瓦",
+      "relevant": []
+    },
+    {
+      "id": "neg-cmp-pad",
+      "category": "negative",
+      "query": "CMP 抛光垫多久更换一次",
+      "relevant": []
+    },
+    {
+      "id": "neg-cooling-water",
+      "category": "negative",
+      "query": "B7 的冷却水流量报警应该按哪个 SOP 处理？",
+      "relevant": []
+    },
+    {
+      "id": "neg-helium-backside",
+      "category": "negative",
+      "query": "How do I fix a helium backside cooling pressure alarm on the etch chamber?",
+      "relevant": []
+    }
+  ]
+}

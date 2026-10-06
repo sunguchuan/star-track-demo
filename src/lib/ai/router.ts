@@ -114,3 +114,28 @@ export function resolveRoute(options: {
 
 export const getLocalModel = () => LOCAL_MODEL;
 export const getCloudModel = () => CLOUD_MODEL;
+
+export const DEFAULT_STRONG_MODEL = "gemini-3.8-flash";
+
+/**
+ * Cloud model for complex requests (see difficulty.ts). CLOUD_MODEL_STRONG= (empty)
+ * turns tiering off; unset defaults to gemini-3.8-flash only on Gemini deployments.
+ */
+export function getStrongCloudModel(): string | null {
+  const raw = process.env.CLOUD_MODEL_STRONG;
+  const fallback = CLOUD_MODEL.startsWith("gemini") ? DEFAULT_STRONG_MODEL : "";
+  const model = raw === undefined ? fallback : raw.trim();
+  return model && model !== CLOUD_MODEL ? model : null;
+}
+
+/** After a strong-tier outage, skip it for a while instead of paying a failed call per request. */
+export const STRONG_COOLDOWN_MS = 5 * 60_000;
+let strongDownUntil = 0;
+
+export function noteStrongModelFailure(now = Date.now()): void {
+  strongDownUntil = now + STRONG_COOLDOWN_MS;
+}
+
+export function isStrongModelCoolingDown(now = Date.now()): boolean {
+  return now < strongDownUntil;
+}

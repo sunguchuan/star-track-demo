@@ -121,6 +121,23 @@ export function AiRunsContent({
                   : `${Math.round(usage.savingsRate * 100)}% ${copy.savingsRateSuffix}`
               }
             />
+            <Stat
+              label={copy.cacheHitRate}
+              value={
+                stats.cache.hitRate == null
+                  ? "—"
+                  : `${Math.round(stats.cache.hitRate * 100)}%`
+              }
+              hint={`${stats.cache.hits} ${copy.cacheHits} · P50 ${formatMs(stats.cache.hitTotalP50)}`}
+            />
+            <Stat
+              label={copy.cacheSavedTime}
+              value={formatMs(stats.cache.savedMs)}
+            />
+            <Stat
+              label={copy.cacheSavedCost}
+              value={formatUsd(stats.cache.savedUsd)}
+            />
           </section>
           <p className="mt-2 text-xs text-zinc-500">{costNote}</p>
 
@@ -161,6 +178,57 @@ export function AiRunsContent({
               </table>
             </div>
             <p className="mt-2 text-xs text-zinc-500">{copy.latencyNote}</p>
+          </section>
+
+          <section className="mt-8">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-violet-700">
+              {copy.tierSection}
+            </h2>
+            <div className="overflow-hidden rounded-xl border border-violet-100 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-violet-50/60 text-left text-xs text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">{copy.colTier}</th>
+                    <th className="px-3 py-2 font-medium">{copy.colTierRuns}</th>
+                    <th className="px-3 py-2 font-medium">{copy.colTotalP50}</th>
+                    <th className="px-3 py-2 font-medium">{copy.colAvgCost}</th>
+                    <th className="px-3 py-2 font-medium">{copy.colCost}</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums text-violet-950">
+                  {(["standard", "strong"] as const).map((key) => {
+                    const row = stats.tiers.byTier[key];
+                    return (
+                      <tr key={key} className="border-t border-violet-50">
+                        <td className="px-3 py-2">
+                          {key === "standard" ? copy.tierStandard : copy.tierStrong}
+                        </td>
+                        <td className="px-3 py-2">{row.count}</td>
+                        <td className="px-3 py-2">{formatMs(row.totalP50)}</td>
+                        <td className="px-3 py-2">
+                          {row.avgCostUsd == null ? "—" : formatUsd(row.avgCostUsd)}
+                        </td>
+                        <td className="px-3 py-2">{formatUsd(row.costUsd)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-sm text-violet-950">
+              {copy.complexShare}{" "}
+              <span className="font-semibold tabular-nums">{stats.tiers.complex}</span>{" "}
+              <span className="text-zinc-500">
+                ({pct(stats.tiers.complex, stats.tiers.assessed)})
+              </span>
+              {" · "}
+              {copy.escalations}{" "}
+              <span className="font-semibold tabular-nums">{stats.tiers.escalated}</span>{" "}
+              <span className="text-zinc-500">
+                ({stats.tiers.escalationKept} {copy.escalationKept})
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">{copy.tierNote}</p>
           </section>
 
           <section className="mt-8">
@@ -298,6 +366,28 @@ export function AiRunsContent({
                         {copy.fellBack}
                       </span>
                     )}
+                    {run.difficulty === "complex" && (
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700">
+                        {copy.badgeComplex}
+                      </span>
+                    )}
+                    {run.tier === "strong" && (
+                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 font-medium text-indigo-800">
+                        {copy.badgeStrong}
+                      </span>
+                    )}
+                    {run.escalated && (
+                      <span className="rounded-full bg-fuchsia-100 px-2 py-0.5 font-medium text-fuchsia-800">
+                        {copy.badgeEscalated}
+                      </span>
+                    )}
+                    {run.cache && (
+                      <span className="rounded-full bg-teal-100 px-2 py-0.5 font-medium text-teal-800">
+                        {copy.cached}
+                        {run.cache.similarity != null &&
+                          ` · ${(run.cache.similarity * 100).toFixed(1)}%`}
+                      </span>
+                    )}
                     {run.feedback != null && (
                       <span
                         className={
@@ -346,6 +436,14 @@ export function AiRunsContent({
                     {" · "}
                     {run.reason}
                   </p>
+                  {run.spanCount > 0 && (
+                    <Link
+                      href={`/ai/runs/${run.id}`}
+                      className="mt-1.5 inline-flex text-xs font-medium text-violet-700 hover:underline"
+                    >
+                      {copy.viewTrace}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>

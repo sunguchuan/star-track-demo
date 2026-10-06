@@ -16,8 +16,9 @@ export function judgeConfig() {
   if (!apiKey) return null;
   return {
     apiKey,
-    baseUrl: (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
-    model: process.env.EVAL_JUDGE_MODEL ?? process.env.CLOUD_MODEL ?? "gpt-4.1-mini",
+    // CI passes unset repository variables as empty strings, so `||` rather than `??`.
+    baseUrl: (process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/$/, ""),
+    model: process.env.EVAL_JUDGE_MODEL?.trim() || process.env.CLOUD_MODEL?.trim() || "gpt-4.1-mini",
   };
 }
 
@@ -26,7 +27,7 @@ const SYSTEM = `你是半导体产线 AI 助手的评测员。严格依据参考
 
 function buildPrompt({ question, answer, reference, keyFindings }) {
   const findings = keyFindings.map((f, i) => `${i + 1}. ${f}`).join("\n");
-  return `## 参考数据（产线数据库全量；回答中的事实只能来自这里）
+  return `## 参考数据（产线数据库全量 + knowledgeBase 知识库文档全量；回答中的事实只能来自这里。知识库里的历史事故被说成当前事件，记为 unsupported）
 <reference>
 ${JSON.stringify(reference)}
 </reference>

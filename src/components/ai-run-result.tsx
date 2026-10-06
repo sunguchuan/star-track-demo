@@ -5,6 +5,7 @@ import { formatTokens, formatUsd } from "@/lib/ai/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { GuardrailAction, RunUsage } from "@/lib/ai/types";
 import { RETRY_LOCAL_CODES, type AiStreamState } from "@/lib/ai/use-ai-stream";
+import Link from "next/link";
 
 const GUARDRAIL_TONE: Record<GuardrailAction, string> = {
   block: "border-red-200 bg-red-50 text-red-800",
@@ -19,6 +20,8 @@ type Props = {
   copy: Dictionary["aiPage"];
   /** Omit to hide the "retry on local" action (e.g. already local-only). */
   onRetryLocal?: () => void;
+  /** Re-run without the answer cache; shown on cached answers. */
+  onRegenerate?: () => void;
   onFeedback: (score: 1 | -1) => void;
   emptyText?: string;
 };
@@ -28,11 +31,13 @@ export function AiRunResult({
   state,
   copy,
   onRetryLocal,
+  onRegenerate,
   onFeedback,
   emptyText = "",
 }: Props) {
   const {
     meta,
+    cache,
     error,
     output,
     plan,
@@ -77,6 +82,34 @@ export function AiRunResult({
             {meta.model}
           </span>
           <span className="text-zinc-500">{meta.reason}</span>
+        </div>
+      )}
+
+      {cache && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-900">
+          <span className="font-semibold">{copy.cache.badge}</span>
+          <span>
+            {cache.similarity == null
+              ? copy.cache.exact
+              : `${copy.cache.similarity} ${(cache.similarity * 100).toFixed(1)}%`}
+          </span>
+          <span className="tabular-nums">
+            {copy.cache.saved} {(cache.savedMs / 1000).toFixed(1)}s
+            {cache.savedUsd > 0 && ` · ${formatUsd(cache.savedUsd)}`}
+          </span>
+          <Link href={`/ai/runs/${cache.sourceRunId}`} className="underline-offset-2 hover:underline">
+            {copy.cache.source} · {new Date(cache.createdAt).toLocaleString()}
+          </Link>
+          {onRegenerate && !loading && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              title={copy.cache.regenerateHint}
+              className="ml-auto rounded-md bg-white px-2.5 py-1 font-medium text-teal-800 ring-1 ring-teal-200 hover:bg-teal-100"
+            >
+              {copy.cache.regenerate}
+            </button>
+          )}
         </div>
       )}
 
@@ -131,10 +164,33 @@ export function AiRunResult({
                     {trace.arguments}
                   </p>
                 )}
-                {trace.preview && (
-                  <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-zinc-600">
-                    {trace.preview}
-                  </pre>
+                {trace.sources ? (
+                  trace.sources.length > 0 ? (
+                    <ul className="mt-1.5 space-y-1">
+                      {trace.sources.map((source) => (
+                        <li key={`${source.docId}#${source.heading}`} className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded bg-violet-100 px-1.5 py-0.5 font-mono text-[11px] text-violet-900">
+                            {source.docId}
+                          </span>
+                          <span className="text-zinc-600">{source.heading}</span>
+                          {source.relevance != null && (
+                            <span className="text-[10px] text-zinc-400">
+                              {copy.sourceRelevance} {source.relevance}/3
+                            </span>
+                          )}
+                          <span className="text-[10px] text-zinc-400">{source.matchedBy.join(" + ")}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-zinc-500">{copy.noSources}</p>
+                  )
+                ) : (
+                  trace.preview && (
+                    <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-zinc-600">
+                      {trace.preview}
+                    </pre>
+                  )
                 )}
               </li>
             ))}
@@ -195,6 +251,7 @@ export function AiRunResult({
                 type="button"
                 onClick={() => onFeedback(-1)}
                 disabled={feedback === "saving"}
+                title={cache ? copy.cache.feedbackEvicts : undefined}
                 className="rounded-md bg-zinc-50 px-2.5 py-1 font-medium text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100 disabled:opacity-50"
               >
                 {copy.feedbackDown}
@@ -204,6 +261,12 @@ export function AiRunResult({
               )}
             </>
           )}
+          <Link
+            href={`/ai/runs/${runId}`}
+            className="ml-auto font-medium text-violet-700 hover:underline"
+          >
+            {copy.viewTrace}
+          </Link>
         </div>
       )}
     </section>

@@ -21,7 +21,7 @@ const plan: ActionPlan = {
     { text: "批次 B-240909-01 良率 89.4%，低于 93%", refs: ["B-240909-01", "ETCH-YIELD-DROP"] },
   ],
   causes: [{ text: "腔体状态漂移", confidence: "medium", refs: ["T-ETCH-07"] }],
-  actions: [{ text: "暂停 T-ETCH-07 派工并做腔体检查", priority: "P0", owner: "设备工程师" }],
+  actions: [{ text: "暂停 T-ETCH-07 派工并做腔体检查", priority: "P0", owner: "设备工程师", refs: [] }],
   dataToConfirm: ["最近一次 PM 记录"],
 };
 
@@ -50,6 +50,13 @@ describe("parseActionPlan", () => {
       findings: [{ text: "现象（事实）", refs: ["Critical Alert A-004 (Batch yield 89.4% below limit)"] }],
     };
     assert.equal(parseActionPlan(JSON.stringify(sentenceRef)).ok, false);
+  });
+
+  it("fills in missing action refs (plans from older prompts and cached answers)", () => {
+    const legacyAction: Record<string, unknown> = { ...plan.actions[0] };
+    delete legacyAction.refs;
+    const parsed = parseActionPlan(JSON.stringify({ ...plan, actions: [legacyAction] }));
+    assert.deepEqual(parsed, { ok: true, plan });
   });
 
   it("requires findings and actions for in-scope plans only", () => {
@@ -87,7 +94,7 @@ describe("renderActionPlan", () => {
       summary: "B-240909-01 on T-ETCH-07 is at 89.4%, below the control limit.",
       findings: [{ text: "B-240909-01 yield 89.4%, below 93%", refs: ["B-240909-01", "ETCH-YIELD-DROP"] }],
       causes: [{ text: "Chamber condition drift", confidence: "medium", refs: ["T-ETCH-07"] }],
-      actions: [{ text: "Hold T-ETCH-07 and inspect the chamber", priority: "P0", owner: "Equipment engineer" }],
+      actions: [{ text: "Hold T-ETCH-07 and inspect the chamber", priority: "P0", owner: "Equipment engineer", refs: [] }],
       dataToConfirm: ["Last PM record"],
     };
     const markdown = renderActionPlan(english, "en");
@@ -113,5 +120,15 @@ describe("findUngroundedRefs", () => {
       causes: [{ text: "真空泄漏", confidence: "high", refs: ["ETCH-VACUUM", "T-ETCH-07"] }],
     };
     assert.deepEqual(findUngroundedRefs(invented, evidence), ["ETCH-VACUUM"]);
+  });
+
+  it("checks document IDs cited by actions against the retrieved passages", () => {
+    const cited: ActionPlan = {
+      ...plan,
+      actions: [{ text: "按湿法清洁 SOP 执行", priority: "P0", owner: "设备工程师", refs: ["SOP-ETCH-012"] }],
+    };
+    assert.deepEqual(findUngroundedRefs(cited, evidence), ["SOP-ETCH-012"]);
+    assert.deepEqual(findUngroundedRefs(cited, `${evidence}\n[1] SOP-ETCH-012 · 湿法清洁`), []);
+    assert.ok(renderActionPlan(cited).includes("P0 · 按湿法清洁 SOP 执行〔SOP-ETCH-012〕"));
   });
 });

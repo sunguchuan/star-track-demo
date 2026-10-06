@@ -269,6 +269,15 @@ export function shouldFallbackToLocal(err: unknown): boolean {
   );
 }
 
+/**
+ * Strong-tier failures worth retrying on the standard cloud model (same key, so not auth;
+ * a run timeout has already used up the budget).
+ */
+export function shouldDowngradeTier(err: unknown): boolean {
+  const e = toProviderError(err, "cloud");
+  return shouldFallbackToLocal(e) || e.code === "model_unavailable";
+}
+
 /** Local failures that should fall back to cloud when Key is configured. */
 export function shouldFallbackToCloud(err: unknown): boolean {
   const e = toProviderError(err, "local");

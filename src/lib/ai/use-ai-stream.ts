@@ -2,7 +2,7 @@
 
 /**
  * Client side of the Gateway protocol: POST /api/ai/chat, consume SSE
- * (run → meta → tool_call/tool_result* → plan? → delta* → error? → usage? → done,
+ * (run → meta → cache? → tool_call/tool_result* → plan? → delta* → error? → usage? → done,
  * with guardrail events anywhere before done) and expose the run as React state.
  * Shared by the notes panel and the FAB investigate panel. Protocol: docs/ai-gateway.md §8.
  */
@@ -12,6 +12,7 @@ import type {
   AiStrategy,
   AiTaskType,
   GuardrailHit,
+  KnowledgeSource,
   RunUsage,
   StreamEvent,
 } from "@/lib/ai/types";
@@ -35,6 +36,7 @@ export type AiToolTrace = {
   arguments: string;
   ok?: boolean;
   preview?: string;
+  sources?: KnowledgeSource[];
 };
 
 export type AiFeedbackState = "idle" | "saving" | "up" | "down" | "failed";
@@ -50,7 +52,12 @@ export type AiStreamRequest = {
   input: string;
   taskType: AiTaskType;
   strategy: AiStrategy;
+  /** false = regenerate: skip the Gateway answer cache. */
+  cache?: boolean;
 };
+
+/** Set when the Gateway replayed a cached answer instead of calling a model. */
+export type AiCacheState = Omit<Extract<StreamEvent, { type: "cache" }>, "type">;
 
 export type AiPlanState = {
   plan: ActionPlan;
@@ -63,6 +70,7 @@ export type AiStreamState = {
   plan: AiPlanState | null;
   usage: RunUsage | null;
   meta: AiRunMeta | null;
+  cache: AiCacheState | null;
   error: AiRunError | null;
   toolTraces: AiToolTrace[];
   guardrails: GuardrailHit[];
@@ -85,6 +93,7 @@ export function useAiStream(copy: AiStreamCopy) {
   const [plan, setPlan] = useState<AiPlanState | null>(null);
   const [usage, setUsage] = useState<RunUsage | null>(null);
   const [meta, setMeta] = useState<AiRunMeta | null>(null);
+  const [cache, setCache] = useState<AiCacheState | null>(null);
   const [error, setError] = useState<AiRunError | null>(null);
   const [toolTraces, setToolTraces] = useState<AiToolTrace[]>([]);
   const [guardrails, setGuardrails] = useState<GuardrailHit[]>([]);
@@ -98,6 +107,7 @@ export function useAiStream(copy: AiStreamCopy) {
     setPlan(null);
     setUsage(null);
     setMeta(null);
+    setCache(null);
     setError(null);
     setToolTraces([]);
     setGuardrails([]);
@@ -172,6 +182,16 @@ export function useAiStream(copy: AiStreamCopy) {
               model: event.model,
               reason: event.reason,
             });
+          } else if (event.type === "cache") {
+            setCache({
+              mode: event.mode,
+              similarity: event.similarity,
+              entryId: event.entryId,
+              sourceRunId: event.sourceRunId,
+              createdAt: event.createdAt,
+              savedMs: event.savedMs,
+              savedUsd: event.savedUsd,
+            });
           } else if (event.type === "tool_call") {
             setToolTraces((prev) => [
               ...prev.filter((t) => t.id !== event.id),
@@ -181,7 +201,7 @@ export function useAiStream(copy: AiStreamCopy) {
             setToolTraces((prev) =>
               prev.map((t) =>
                 t.id === event.id
-                  ? { ...t, ok: event.ok, preview: event.preview }
+                  ? { ...t, ok: event.ok, preview: event.preview, sources: event.sources }
                   : t,
               ),
             );
@@ -257,6 +277,7 @@ export function useAiStream(copy: AiStreamCopy) {
     plan,
     usage,
     meta,
+    cache,
     error,
     toolTraces,
     guardrails,

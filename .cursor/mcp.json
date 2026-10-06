@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "star-track-fab": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--no-warnings", "${workspaceFolder}/scripts/mcp/server.ts"]
+    }
+  }
+}

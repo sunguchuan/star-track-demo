@@ -43,7 +43,8 @@ export default function FabPage() {
           APIs:{" "}
           <code className="rounded bg-violet-50 px-1">/api/fab/summary</code>{" "}
           <code className="rounded bg-violet-50 px-1">/api/fab/batches</code>{" "}
-          <code className="rounded bg-violet-50 px-1">/api/fab/alerts</code>
+          <code className="rounded bg-violet-50 px-1">/api/fab/alerts</code>{" "}
+          <code className="rounded bg-violet-50 px-1">/api/fab/knowledge</code>
         </p>
 
         <section className="mt-6 grid grid-cols-2 gap-3">

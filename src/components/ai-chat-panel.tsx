@@ -134,7 +134,7 @@ export function AiChatPanel() {
     }));
   }
 
-  async function run(nextStrategy: AiStrategy = strategy) {
+  async function run(nextStrategy: AiStrategy = strategy, cache = true) {
     if (!activeNote?.body.trim() || state.loading) return;
 
     const noteId = activeNote.id;
@@ -142,6 +142,7 @@ export function AiChatPanel() {
       input: activeNote.body,
       taskType,
       strategy: nextStrategy,
+      cache,
     });
 
     if (text) {
@@ -295,6 +296,7 @@ export function AiChatPanel() {
         state={state}
         copy={copy}
         onRetryLocal={strategy !== "only-local" ? retryLocal : undefined}
+        onRegenerate={() => void run(strategy, false)}
         onFeedback={(score) => void sendFeedback(score)}
       />
     </div>

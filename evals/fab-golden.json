@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "产线排查（investigate）标准测试题。数据来自固定种子（src/lib/fab/db.ts），答案可核对。expect 由规则打分（mustMention 的数组项表示任一即可，例如告警代码或告警编号；tools:false 表示不应调用工具）；keyFindings 交给模型打分时检查覆盖率。",
+  "description": "产线排查（investigate）标准测试题。数据来自固定种子（src/lib/fab/db.ts），答案可核对。expect 由规则打分（mustMention 的数组项表示任一即可，例如告警代码或告警编号；tools:false 表示不应调用工具，toolsInclude 列出必须调用的工具）；knowledge 类题目的答案在 data/kb 知识库里，只有检索到文档并引用编号才能通过；keyFindings 交给模型打分时检查覆盖率。",
   "cases": [
     {
       "id": "b7-yield-drop",
@@ -103,6 +103,62 @@
       ]
     },
     {
+      "id": "kb-particle-procedure",
+      "category": "knowledge",
+      "input": "ETCH-PARTICLE 告警按规程该怎么处理？B7 以前出过类似问题吗？",
+      "expect": {
+        "toolsInclude": ["search_fab_knowledge"],
+        "mustMention": ["RB-ETCH-PARTICLE", "INC-2506-02"]
+      },
+      "keyFindings": [
+        "按 RB-ETCH-PARTICLE：暂停当前及排队批次、受影响批次 100% 缺陷扫描、腔体停机按 SOP-ETCH-012 湿法清洁",
+        "放行标准：清洁和陈化后颗粒测试片新增颗粒少于 10 颗且连续 2 片合格",
+        "INC-2506-02：2026 年 6 月 B7 曾因 RF 漂移未处理引发颗粒告警，良率降到 88.7%，根因是匹配网络真空电容老化",
+        "把历史事故作为参考，而不是说成当前事件的已确认根因"
+      ]
+    },
+    {
+      "id": "kb-rf-drift-acked",
+      "category": "knowledge",
+      "input": "B7 的 ETCH-RF-DRIFT 告警已经确认过了，还需要处理吗？",
+      "expect": {
+        "toolsInclude": ["search_fab_knowledge"],
+        "mustMention": [["RB-ETCH-RF-DRIFT", "INC-2506-02"], ["24 小时", "24小时", "24 h"]]
+      },
+      "keyFindings": [
+        "确认（acknowledged）不等于根因已排除，仍需处理",
+        "告警出现后 24 小时内必须按 SOP-ETCH-021 完成 RF 校准",
+        "提到 RF 漂移常在 1–3 天后引发颗粒告警（INC-2506-02），与当前 B7 的 ETCH-PARTICLE 告警可能有关",
+        "放行需连续 25 片 RF 功率偏离不超过 ±1.5% 且没有新的颗粒告警"
+      ]
+    },
+    {
+      "id": "kb-wet-clean-release",
+      "category": "knowledge",
+      "input": "B7 做完湿法清洁之后，要满足哪些条件才能恢复量产？",
+      "expect": {
+        "toolsInclude": ["search_fab_knowledge"],
+        "mustMention": ["SOP-ETCH-012", "10"]
+      },
+      "keyFindings": [
+        "颗粒测试片新增颗粒少于 10 颗，连续 2 片合格",
+        "3 片监控片刻蚀速率与基线偏差小于 2%",
+        "复装后漏率需低于 2 mTorr/min，并跑 25 片陈化片"
+      ]
+    },
+    {
+      "id": "kb-no-document",
+      "category": "knowledge",
+      "input": "B7 的冷却水流量报警应该按哪个 SOP 处理？",
+      "expect": {
+        "toolsInclude": ["search_fab_knowledge"]
+      },
+      "keyFindings": [
+        "明确说明知识库中没有冷却水流量报警的处理规程",
+        "没有编造 SOP 编号或处理步骤"
+      ]
+    },
+    {
       "id": "unknown-batch",
       "category": "robustness",
       "input": "批次 B-240915-01 的良率是多少？",
@@ -139,6 +195,20 @@
       },
       "keyFindings": [
         "礼貌拒绝，说明只处理产线排查问题，没有写诗"
+      ]
+    },
+    {
+      "id": "off-topic-identity-en",
+      "category": "scope",
+      "input": "Who am I?",
+      "expect": {
+        "sections": false,
+        "tools": false,
+        "language": "en",
+        "maxChars": 700
+      },
+      "keyFindings": [
+        "简短说明自己是产线排查助手、无法知道用户身份，没有查询或罗列产线数据"
       ]
     },
     {

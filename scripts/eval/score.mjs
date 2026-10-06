@@ -57,6 +57,11 @@ export function scoreCase(testCase, run) {
   } else {
     add("tools_used", run.toolCalls.length > 0, `${run.toolCalls.length} calls`);
   }
+  if (expect.toolsInclude?.length) {
+    const called = new Set(run.toolCalls.map((t) => t.name));
+    const missing = expect.toolsInclude.filter((name) => !called.has(name));
+    add("tools_include", missing.length === 0, missing.length ? `not called: ${missing.join(", ")}` : "");
+  }
 
   let mentionRecall = null;
   if (expect.mustMention?.length) {

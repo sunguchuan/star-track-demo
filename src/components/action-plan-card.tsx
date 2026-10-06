@@ -105,6 +105,7 @@ export function ActionPlanCard({ value, copy }: Props) {
                   {a.owner}
                 </span>
               )}
+              {refChips(a.refs ?? [])}
             </span>
           </li>
         ))}

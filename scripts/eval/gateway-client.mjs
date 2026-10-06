@@ -14,7 +14,8 @@ export async function runCase({ baseUrl, input, taskType = "investigate", strate
     const res = await fetch(`${baseUrl}/api/ai/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, taskType, strategy }),
+      // Evals measure the model, never a replayed answer.
+      body: JSON.stringify({ input, taskType, strategy, cache: false }),
       signal: AbortSignal.timeout(CASE_TIMEOUT_MS),
     });
 

@@ -12,7 +12,7 @@
  * case with rules (and optionally an LLM judge), writes a JSON + Markdown report, and exits 1
  * when the regression gate fails.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fetchReferenceData, runCase } from "./gateway-client.mjs";
@@ -21,7 +21,7 @@ import { SAFETY_CHECKS, scoreCase } from "./score.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const DEFAULT_MIN_PASS_RATE = 0.7;
-/** ≈ 2 of 17 cases: run-to-run noise of the same build is about one case. */
+/** ≈ 3 of 21 cases: run-to-run noise of the same build is one or two cases. */
 const PASS_RATE_TOLERANCE = 0.15;
 const JUDGE_TOLERANCE = 0.1;
 
@@ -83,6 +83,17 @@ const fmtNum = (x) => (x == null ? "—" : x.toFixed(2));
 const fmtUsd = (x) =>
   x == null ? "—" : x === 0 ? "$0" : x < 0.01 ? `$${x.toFixed(4)}` : x < 1 ? `$${x.toFixed(3)}` : `$${x.toFixed(2)}`;
 const tokensOf = (u) => (u ? u.promptTokens + u.completionTokens : null);
+
+/** The judge's reference includes every knowledge base document, not just what was retrieved. */
+function loadKnowledgeBase() {
+  const dir = path.join(ROOT, "data", "kb");
+  if (!existsSync(dir)) return {};
+  return Object.fromEntries(
+    readdirSync(dir)
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => [name.replace(/\.md$/, ""), readFileSync(path.join(dir, name), "utf8")]),
+  );
+}
 const sum = (xs) => xs.reduce((a, b) => a + (b ?? 0), 0);
 
 async function main() {
@@ -94,7 +105,9 @@ async function main() {
     process.exit(2);
   }
 
-  const reference = judge ? await fetchReferenceData(baseUrl) : null;
+  const reference = judge
+    ? { ...(await fetchReferenceData(baseUrl)), knowledgeBase: loadKnowledgeBase() }
+    : null;
   console.log(
     `Eval: ${cases.length} cases → ${baseUrl} (strategy=${args.strategy}${judge ? `, judge=${judge.model}` : ""})\n`,
   );

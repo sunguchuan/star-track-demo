@@ -1,4 +1,5 @@
 import { setRunFeedback, type AiRunFeedback } from "@/lib/ai/runs";
+import { evictForRun } from "@/lib/ai/semantic-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,9 @@ export async function POST(
     if (!setRunFeedback(id, feedback)) {
       return Response.json({ error: "Run not found" }, { status: 404 });
     }
-    return Response.json({ id, feedback });
+    // A bad answer must not be served again from the cache.
+    const evicted = feedback === -1 ? evictForRun(id) : 0;
+    return Response.json({ id, feedback, evicted });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save feedback";
     return Response.json({ error: message }, { status: 500 });

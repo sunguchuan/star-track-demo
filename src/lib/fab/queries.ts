@@ -1,5 +1,24 @@
+import { createHash } from "crypto";
 import { getFabDb } from "./db";
 import type { FabAlert, FabBatch, FabSummary } from "./types";
+
+/**
+ * Fingerprint of everything the investigate tools can read. Any change (new batch, alert
+ * acknowledged, reseed) yields a new value, which retires cached answers based on old data.
+ * Full-table hash is fine at demo size; a real fab would use an updated_at / version column.
+ */
+export function getFabDataVersion(): string {
+  const db = getFabDb();
+  const hash = createHash("sha1");
+  for (const sql of [
+    "SELECT id, name, area FROM tools ORDER BY id",
+    "SELECT * FROM batches ORDER BY id",
+    "SELECT * FROM alerts ORDER BY id",
+  ]) {
+    hash.update(JSON.stringify(db.prepare(sql).all()));
+  }
+  return hash.digest("hex").slice(0, 12);
+}
 
 type BatchRow = {
   id: string;
