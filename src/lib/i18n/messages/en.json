@@ -412,7 +412,7 @@
     "floor": "Similarity floor",
     "embedModel": "Embedding model",
     "noVector": "Vector search unavailable, BM25 only: ",
-    "rerankFailed": "Rerank failed, using the fused ranking: ",
+    "rerankFailed": "Rerank returned no scores (this is not \"nothing scored 2 or higher\"), so the fused ranking is used instead: ",
     "filterRelaxed": "The filter matched no document and was relaxed.",
     "latency": "Latency",
     "resultLanguage": "Results in",

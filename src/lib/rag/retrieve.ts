@@ -22,6 +22,7 @@ import {
   type Embedding,
 } from "@/lib/ai/embeddings";
 import { toProviderError } from "@/lib/ai/errors";
+import { hedged } from "@/lib/ai/hedge";
 import { RunTrace, type Span, type UsageCallback } from "@/lib/ai/trace";
 import { Bm25Index } from "./bm25";
 import {
@@ -49,6 +50,8 @@ export const SECTION_CANDIDATES = 10;
 export const RERANK_CANDIDATES = 8;
 /** Usually 1–3 s; past this the fused ranking is used instead of stalling the agent. */
 export const RERANK_TIMEOUT_MS = 10_000;
+/** A rerank call still running after this is duplicated (hedged); the first reply wins. */
+export const RERANK_HEDGE_AFTER_MS = 4_000;
 /** Reranker scale: 3 answers, 2 partly answers / needed context, 1 same topic only, 0 unrelated. */
 export const MIN_RELEVANCE = 2;
 export const DEFAULT_TOP_K = 3;
@@ -330,19 +333,28 @@ export async function retrieve(options: RetrievalOptions): Promise<RetrievalResu
       metadata: { candidates: candidates.length, minRelevance: MIN_RELEVANCE },
     });
     const timeout = AbortSignal.timeout(RERANK_TIMEOUT_MS);
+    const sections = candidates.map((c) => corpus.sections.get(c.sectionId)!);
+    const onUsage = span.usageSink(options.onUsage);
     try {
-      const scores = await rerankSections({
-        query,
-        sections: candidates.map((c) => corpus.sections.get(c.sectionId)!),
-        model: rerankModel,
-        signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
-        onUsage: span.usageSink(options.onUsage),
-      });
+      const { value: scores, attempts, winner } = await hedged(
+        (signal) => rerankSections({ query, sections, model: rerankModel, signal, onUsage }),
+        {
+          hedgeAfterMs: RERANK_HEDGE_AFTER_MS,
+          signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
+          retryIf: (err) => {
+            const { code } = toProviderError(err, "cloud");
+            return code !== "quota_exhausted" && code !== "rate_limited";
+          },
+        },
+      );
       rerank = candidates
         .map((c, i) => ({ sectionId: c.sectionId, score: scores[i], i }))
         .sort((a, b) => b.score - a.score || a.i - b.i)
         .map(({ sectionId, score }) => ({ sectionId, score }));
-      span.end({ output: rerank.map((r) => `${r.sectionId} (${r.score})`) });
+      span.end({
+        output: rerank.map((r) => `${r.sectionId} (${r.score})`),
+        metadata: { attempts, winner },
+      });
     } catch (err) {
       span.fail(err);
       if (options.signal?.aborted) throw err;

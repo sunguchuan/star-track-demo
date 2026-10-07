@@ -72,7 +72,7 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 - **Step 1**：SQLite 假产线数据 + `/api/fab/*` + `/fab` 页
 - **Step 2**：`/fab` 页「AI 产线排查」输入框 (`investigate`) — tool-calling Agent 查批次/告警并输出 Action Plan
 - **Step 3**：运行观测看板 [`/ai/runs`](http://localhost:3000/ai/runs) — 每次 AI 调用的路由、降级、首字延迟、耗时、Token 与费用、工具调用、护栏命中与用户反馈
-- **Step 4**：质量评估 — 标准测试题（现 21 道）+ 规则 / 模型打分 + 回归门槛，接入 GitHub Actions CI
+- **Step 4**：质量评估 — 标准测试题（现 22 道）+ 规则 / 模型打分 + 回归门槛，接入 GitHub Actions CI
 - **Step 4+**：结构化 Action Plan — 模型按 JSON Schema 输出（zod 校验，失败修复一次后退回文本），界面渲染成卡片：结论、现象（引用编号可核对）、原因可能性、带优先级和负责角色的动作、待确认数据；回答语言跟随提问（英文提问得到英文 Action Plan）
 - **Step 5**：调用链追踪 — `/ai/runs/[id]` 瀑布图展示一次运行的完整 span 树，可选通过官方 OpenTelemetry SDK 导出到 Langfuse
 - **Step 6**：答案缓存 — 相同输入 / 语义相似 + 关键词校验，阈值按向量模型校准（`npm run eval:cache`），看板显示命中率和省下的时间与费用
@@ -117,7 +117,7 @@ npm test                     # 单元测试：路由、错误分类、护栏规�
 npm run eval:rag             # 检索分阶段评测：28 个标注问题的 Hit@1 / Recall@k / MRR / nDCG / 拒答（--embed local|cloud，--no-rerank）
 npm run eval:cache           # 缓存阈值校准（本机 Ollama embeddinggemma 和 / 或云端 Key）
 npm run eval:prompt          # Prompt 压缩前后 Action Plan 调用的 prompt_tokens（需云端 Key）
-npm run eval                 # 21 道标准测试题（产线排查、知识库、护栏），规则打分（先启动应用）
+npm run eval                 # 22 道标准测试题（产线排查、知识库、护栏），规则打分（先启动应用）
 npm run eval -- --judge      # 再加模型打分（忠实度、要点覆盖等，需云端 Key）
 npm run eval -- --guards-only  # 只跑必须被拦截的题，不调用模型
 ```
@@ -130,6 +130,7 @@ npm run eval -- --guards-only  # 只跑必须被拦截的题，不调用模型
 - [`docs/ai-design.md`](docs/ai-design.md)：产品与功能（笔记助手、产线排查、运行看板），路线图在 §9
 - [`docs/ai-gateway.md`](docs/ai-gateway.md)：共用 AI 调用层（路由与模型分级、降级、安全护栏、SSE 协议、运行记录与调用链追踪、答案缓存、Prompt 压缩、知识库检索、前端接入）
 - [`docs/ai-eval.md`](docs/ai-eval.md)：质量评估（标准测试题、规则 / 模型打分、检索评测、回归门槛、CI）
+- 英文版（English）：[`docs/en/`](docs/en/) 下同名文件，内容与中文版一致——[fab-demo](docs/en/fab-demo.md)、[ai-design](docs/en/ai-design.md)、[ai-gateway](docs/en/ai-gateway.md)、[ai-eval](docs/en/ai-eval.md)
 
 ## Learn More
 

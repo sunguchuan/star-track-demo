@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# personal interview prep, kept out of the public repo
+/docs/interview/
+
 # eval reports (npm run eval); evals/baseline.json is committed
 /evals/results/
 

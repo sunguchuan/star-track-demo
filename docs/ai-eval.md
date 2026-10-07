@@ -1,5 +1,7 @@
 # AI 质量评估 Design Doc
 
+> English version: [en/ai-eval.md](en/ai-eval.md)
+
 状态：已落地，覆盖产线排查 Agent（`investigate`）、安全护栏和知识库检索。  
 命令：`npm test`（单元测试）、`npm run eval`（标准测试题）、`npm run eval:rag`（检索分阶段评测）  
 相关文档：[`ai-design.md`](ai-design.md)（产品与路线图）、[`ai-gateway.md`](ai-gateway.md)（调用层与护栏）、[`fab-demo.md`](fab-demo.md)（演示数据与"好的回答长什么样"）
@@ -26,7 +28,7 @@
 | 缓存阈值校准 | 35 对"应命中 / 不应命中"的问题，按向量模型测相似度与关键词（`npm run eval:cache`） | 本机 Ollama 和 / 或云端 Key | 改阈值、关键词规则或换向量模型时 |
 | Prompt 压缩测量 | 同一组工具结果，压缩开 / 关各构造一次 Action Plan 调用，比较服务商返回的 `prompt_tokens`（`npm run eval:prompt`） | 云端 Key | 改压缩规则或 Agent prompt 时 |
 | 护栏冒烟 | 标准测试题里必须被拦截的 4 题，经过真实 Gateway | 无（不调用模型） | 每次提交 |
-| 标准测试题 + 规则打分 | 21 题，经过完整链路（护栏、路由、降级、Agent、知识库检索） | 云端 Key 或本机 Ollama | 每晚 / 手动 |
+| 标准测试题 + 规则打分 | 22 题，经过完整链路（护栏、路由、降级、Agent、知识库检索） | 云端 Key 或本机 Ollama | 每晚 / 手动 |
 | 模型打分 | 对有回答的题做 LLM-as-judge | 云端 Key | 每晚 / 手动（`--judge`） |
 
 单元测试用 Node 自带的测试运行器直接跑 TypeScript（Node ≥ 22.18），`tests/setup/register.mjs` 负责解析 `@/` 别名和不带扩展名的导入，不需要额外依赖。
@@ -132,7 +134,7 @@
 门槛（不满足时退出码为 1，`--report-only` 只报告不失败）：
 
 1. 所有安全检查必须通过（见 §4）。
-2. 通过率 ≥ 基线 − 15 个百分点（21 题里约 3 题）；没有基线时 ≥ 70%。
+2. 通过率 ≥ 基线 − 15 个百分点（22 题里约 3 题）；没有基线时 ≥ 70%。
 3. 开启模型打分且基线也有时，faithfulness ≥ 基线 − 10 个百分点。
 
 另外会提示（不失败）：基线里通过、这次失败的题；发生了降级（结果混入另一侧模型）的题。
@@ -145,7 +147,7 @@
 
 ```bash
 npm test                                  # 单元测试
-npm run eval                              # 全部 21 题，规则打分（需应用在 3000 端口运行）
+npm run eval                              # 全部 22 题，规则打分（需应用在 3000 端口运行）
 npm run eval -- --category knowledge      # 只跑知识库题
 npm run eval -- --judge                   # 再加模型打分
 npm run eval -- --guards-only             # 只跑拦截类，不调用模型
@@ -263,7 +265,7 @@ lint 中有 5 处已有代码在 effect 里从 localStorage 恢复状态，暂�
 
 ## 11. 局限与后续
 
-- 21 题样本小，单次结果有波动；后续加 `--repeat N` 取平均，并按类别扩充题目。
+- 22 题样本小，单次结果有波动；后续加 `--repeat N` 取平均，并按类别扩充题目。
 - 检索评测集只有 28 题，minShouldMatch 和相似度阈值都是在这一个集合上选的，有过拟合的可能；扩充时应留出一部分只用于验证。
 - 检索相关度是二值标注（相关 / 不相关），没有区分"直接回答"和"有帮助"；nDCG 可以换成分级标注。
 - 只覆盖产线排查；笔记助手的文本任务可以用同一套脚本加一个题集。

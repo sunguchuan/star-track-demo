@@ -1,5 +1,7 @@
 # 混合 AI 助手与产线 Co-pilot Design Doc
 
+> English version: [en/ai-design.md](en/ai-design.md)
+
 状态：Demo 已落地（本机 Ollama + 云端 Gemini / OpenAI 兼容接口）。路线图 Step 1–7（安全护栏、质量评估与 CI、成本统计与结构化输出、调用链追踪、答案缓存、按难度选模型与 Prompt 压缩、知识库检索、MCP Server）已完成，见 §9。  
 入口：`/ai`（笔记助手）、`/fab`（产线看板 + AI 排查）、`/fab/knowledge`（知识库检索实验）、`/ai/runs`（运行看板）、`/ai/runs/[id]`（单次调用链）；MCP Server `star-track-fab`（Cursor 等外部 AI 客户端）  
 共用调用层：[`ai-gateway.md`](ai-gateway.md)（路由与模型分级、降级、护栏、SSE 协议、运行记录与调用链、答案缓存、Prompt 压缩、知识库检索、前端 hook）  
@@ -84,28 +86,33 @@
 
 ```mermaid
 flowchart LR
-  subgraph 功能
+  subgraph Features["功能"]
     A["/ai 笔记助手<br/>AiChatPanel"]
     B["/fab 产线排查<br/>FabInvestigatePanel"]
     C["/ai/runs 运行看板<br/>/ai/runs/[id] 调用链"]
     K["/fab/knowledge 检索实验"]
   end
-  subgraph 共用调用层
+  subgraph Gateway["共用调用层"]
     H["useAiStream + AiRunResult"]
     G["POST /api/ai/chat<br/>护栏 / 路由 / 降级 / 缓存 / Agent"]
-    R[("ai_runs + ai_spans")]
+    RUNS[("ai_runs + ai_spans<br/>运行记录")]
   end
+  subgraph Data["数据"]
+    FABDB[("fab.db<br/>产线数据")]
+    KBASE[("data/kb + kb-index.db<br/>知识库文档 + 向量索引")]
+  end
+  MCP["MCP 客户端<br/>Cursor / Claude Desktop"]
   A --> H
   B --> H
   H --> G
-  G --> R
-  C --> R
-  B -.产线数据.-> F[("fab.db")]
-  G -.工具查询.-> F
-  G -.知识库检索.-> KB[("data/kb + kb-index.db")]
-  K -.同一套检索.-> KB
-  M["MCP 客户端<br/>Cursor / Claude Desktop"] -.同一套工具（stdio）.-> F
-  M -.-> KB
+  G --> RUNS
+  C --> RUNS
+  B -.->|"产线数据"| FABDB
+  G -.->|"工具查询"| FABDB
+  G -.->|"知识库检索"| KBASE
+  K -.->|"同一套检索"| KBASE
+  MCP -.->|"同一套工具 (stdio)"| FABDB
+  MCP -.-> KBASE
 ```
 
 ### 4.1 笔记助手（`/ai`）
@@ -286,7 +293,7 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 | 压缩让模型读错数据 | 无损（编号原样）、事实核对同时对照原始 JSON；评测验证；可一键关闭 |
 | 检索到不相关的文档，模型照搬别的规程 | 重排序打分 + 低于 2 分丢弃；本地运行用校准过的相似度阈值；提示词要求"没有适用文档就直说"；引用的文档编号要能在检索结果里找到 |
 | 把历史事故当成当前事件 | 提示词区分"参考文档"和"实时数据"；评测要点检查这一条 |
-| 重排序慢 / 失败 | 10 秒超时，失败或超时用融合排名；检索各阶段在调用链里可见 |
+| 重排序慢 / 失败 | 4 秒补发对冲请求，10 秒超时，失败或超时用融合排名；检索各阶段在调用链里可见 |
 | 知识库译文和原文不一致 | 译文只用于展示，检索在原文上做；单元测试要求章节对齐、原文的每个数字和编号在译文里都在；对不齐的译文直接不用 |
 | 演示知识库太小（13 篇），阈值在同一批题上调出 | 文档写清过拟合风险；扩充时留出验证集；检索评测可随时重跑 |
 
@@ -378,7 +385,7 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 
 ### Step 4：质量评估与 CI
 
-- 单元测试（路由、错误分类、护栏规则）+ 17 道产线排查标准测试题（Step 6++ 后为 21 道，含 4 道知识库题），经过真实 Gateway 端到端执行
+- 单元测试（路由、错误分类、护栏规则）+ 17 道产线排查标准测试题（Step 6++ 后为 21 道，含 4 道知识库题；现为 22 道），经过真实 Gateway 端到端执行
 - 规则打分（引用、事实核对、章节、该拦 / 不该拦）+ 模型打分（忠实度、要点覆盖、切题、可执行性）
 - 回归门槛：安全检查全过、通过率不低于基线 − 15 个百分点；基线存在 `evals/baseline.json`
 - CI：每次提交跑 lint、单元测试、构建和不调用模型的护栏冒烟；每晚 / 手动跑完整评测并输出报告

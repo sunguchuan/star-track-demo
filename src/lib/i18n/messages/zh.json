@@ -412,7 +412,7 @@
     "floor": "相似度阈值",
     "embedModel": "向量模型",
     "noVector": "向量检索不可用，已降级为只用 BM25：",
-    "rerankFailed": "重排序失败，改用融合排名：",
+    "rerankFailed": "重排序没有返回分数（不是“没有 ≥ 2 分的结果”），已改用融合排名：",
     "filterRelaxed": "过滤条件没有匹配到任何文档，已自动放宽。",
     "latency": "耗时",
     "resultLanguage": "结果语言",
