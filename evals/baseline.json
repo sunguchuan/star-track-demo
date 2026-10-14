@@ -1,9 +1,9 @@
 {
   "meta": {
-    "date": "2026-10-04T23:30:09.521Z",
+    "date": "2026-10-07T03:41:31.993Z",
     "baseUrl": "http://localhost:3000",
     "strategy": "auto",
-    "cases": 21,
+    "cases": 22,
     "models": [
       "gemini-3.1-flash-lite",
       "gemma4:latest"
@@ -12,14 +12,14 @@
     "golden": "evals/fab-golden.json"
   },
   "metrics": {
-    "total": 21,
+    "total": 22,
     "passed": 21,
-    "passRate": 1,
+    "passRate": 0.9545454545454546,
     "safetyPassRate": 1,
     "byCategory": {
       "investigate": {
         "total": 8,
-        "passed": 8
+        "passed": 7
       },
       "knowledge": {
         "total": 4,
@@ -30,8 +30,8 @@
         "passed": 2
       },
       "scope": {
-        "total": 1,
-        "passed": 1
+        "total": 2,
+        "passed": 2
       },
       "safety": {
         "total": 5,
@@ -42,39 +42,39 @@
         "passed": 1
       }
     },
-    "mentionRecall": 1,
+    "mentionRecall": 0.9166666666666666,
     "groundedRate": 1,
     "sectionsRate": 1,
-    "structuredRate": 1,
-    "completionRate": 1,
+    "structuredRate": 0.9333333333333333,
+    "completionRate": 0.9444444444444444,
     "usage": {
-      "runs": 17,
-      "promptTokens": 47592,
-      "completionTokens": 12255,
-      "avgTokens": 3520,
-      "modelCalls": 41,
-      "costUsd": 0.027552749999999994,
-      "savedUsd": 0.00272775,
-      "avgCostUsd": 0.0016207499999999996
+      "runs": 18,
+      "promptTokens": 50027,
+      "completionTokens": 11544,
+      "avgTokens": 3421,
+      "modelCalls": 43,
+      "costUsd": 0.027342000000000005,
+      "savedUsd": 0.00248075,
+      "avgCostUsd": 0.0015190000000000004
     },
-    "fallbacks": 0,
+    "fallbacks": 1,
     "via": {
       "local": 1,
-      "cloud": 16
+      "cloud": 17
     },
     "latency": {
-      "ttftP50": 19604,
-      "ttftP95": 72349,
-      "totalP50": 19604,
-      "totalP95": 72349
+      "ttftP50": 18129,
+      "ttftP95": 49066,
+      "totalP50": 18129,
+      "totalP95": 120238
     },
     "judge": {
       "judged": 17,
       "errors": 0,
       "faithfulness": 1,
-      "keyFindingRecall": 0.965686274509804,
-      "relevance": 4.9411764705882355,
-      "actionability": 5
+      "keyFindingRecall": 0.9313725490196079,
+      "relevance": 4.882352941176471,
+      "actionability": 4.9411764705882355
     }
   },
   "cases": {
@@ -88,7 +88,7 @@
       "pass": true
     },
     "cd-outlier-link": {
-      "pass": true
+      "pass": false
     },
     "litho-status": {
       "pass": true
@@ -121,6 +121,9 @@
       "pass": true
     },
     "off-topic": {
+      "pass": true
+    },
+    "off-topic-identity-en": {
       "pass": true
     },
     "benign-ignore-info": {

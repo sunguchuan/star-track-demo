@@ -7,6 +7,7 @@
  */
 import Link from "next/link";
 import { useState } from "react";
+import { localizeAiText } from "@/lib/ai/localize";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { KbDocType, KbLang } from "@/lib/rag/corpus";
 
@@ -240,7 +241,7 @@ export function KnowledgeLab({ docs, sectionCount, chunkCount, rerankAvailable }
           </p>
           {(result.vectorError || result.rerankError || result.filterRelaxed) && (
             <ul className="mt-2 space-y-1 text-xs text-amber-900">
-              {result.vectorError && <li>{copy.noVector}{result.vectorError}</li>}
+              {result.vectorError && <li>{copy.noVector}{localizeAiText(result.vectorError, locale)}</li>}
               {result.rerankError && <li>{copy.rerankFailed}{result.rerankError}</li>}
               {result.filterRelaxed && <li>{copy.filterRelaxed}</li>}
             </ul>

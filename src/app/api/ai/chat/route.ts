@@ -60,7 +60,7 @@ import {
 import type { AiRunCache, AiRunGuardrail, AiRunStatus } from "@/lib/ai/runs";
 import type { CachedPlan } from "@/lib/ai/semantic-cache";
 import { createSseResponse, sseEncode } from "@/lib/ai/sse";
-import { recordGuardrails, RunTrace, traceStream } from "@/lib/ai/trace";
+import { promptPreview, recordGuardrails, RunTrace, traceStream } from "@/lib/ai/trace";
 import type {
   AiRouteTarget,
   AiStrategy,
@@ -539,7 +539,7 @@ export async function POST(request: Request) {
             const generation = attempt.child("llm.chat", "generation", {
               target,
               model: runModelName,
-              input: messages.at(-1)?.content ?? "",
+              input: promptPreview(messages),
               metadata: { taskType, messages: messages.length },
             });
             for await (const text of traceStream(

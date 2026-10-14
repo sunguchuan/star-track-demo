@@ -23,7 +23,7 @@ import {
 } from "@/lib/ai/embeddings";
 import { toProviderError } from "@/lib/ai/errors";
 import { hedged } from "@/lib/ai/hedge";
-import { RunTrace, type Span, type UsageCallback } from "@/lib/ai/trace";
+import { RunTrace, withHiddenContext, type Span, type UsageCallback } from "@/lib/ai/trace";
 import { Bm25Index } from "./bm25";
 import {
   loadCorpus,
@@ -33,7 +33,7 @@ import {
   type KbLang,
   type KbSection,
 } from "./corpus";
-import { rerankSections } from "./rerank";
+import { RERANK_PASSAGE_CHARS, rerankSections } from "./rerank";
 import { loadVectors, saveVectors } from "./vector-store";
 
 export const RRF_K = 60;
@@ -329,7 +329,10 @@ export async function retrieve(options: RetrievalOptions): Promise<RetrievalResu
     const span = root.child("rag.rerank", "generation", {
       target: "cloud",
       model: rerankModel,
-      input: query,
+      input: withHiddenContext(query, [
+        "scoring instructions",
+        `${candidates.length} candidate passages, up to ${RERANK_PASSAGE_CHARS} chars each (listed in the output)`,
+      ]),
       metadata: { candidates: candidates.length, minRelevance: MIN_RELEVANCE },
     });
     const timeout = AbortSignal.timeout(RERANK_TIMEOUT_MS);
@@ -356,7 +359,7 @@ export async function retrieve(options: RetrievalOptions): Promise<RetrievalResu
         metadata: { attempts, winner },
       });
     } catch (err) {
-      span.fail(err);
+      span.fail(toProviderError(err, "cloud"));
       if (options.signal?.aborted) throw err;
       rerankError = timeout.aborted
         ? `rerank timed out after ${RERANK_TIMEOUT_MS / 1000} s`

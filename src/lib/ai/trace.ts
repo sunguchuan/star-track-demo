@@ -84,6 +84,43 @@ export function tracePreview(value: unknown): string | null {
     : text;
 }
 
+/**
+ * Span input naming what else went into the call, so a trace never suggests the model saw
+ * only `text`. The hidden parts are summarized, not stored: their content is usually on
+ * other spans already (tool results), and full prompts would bloat every run record.
+ */
+export function withHiddenContext(text: string, hidden: string[]): string {
+  return hidden.length > 0 ? `[Also sent, not shown: ${hidden.join(" · ")}]\n\n${text}` : text;
+}
+
+type PromptMessage = { role: string; name?: string; content?: string | null };
+
+const TOOL_RESULT_TAG = /^<tool_result name="([^"]+)">/;
+
+/** Span input for a chat call: the last message (what changed between calls) plus an outline of the rest. */
+export function promptPreview(messages: PromptMessage[]): string {
+  const tools: string[] = [];
+  const counts = { system: 0, user: 0, assistant: 0 };
+  for (const m of messages.slice(0, -1)) {
+    const content = m.content ?? "";
+    const tool = m.role === "tool" ? m.name : TOOL_RESULT_TAG.exec(content)?.[1];
+    if (tool) {
+      const body = content.replace(TOOL_RESULT_TAG, "").replace(/<\/tool_result>$/, "").trim();
+      tools.push(`${tool} (${body.length.toLocaleString("en-US")} chars)`);
+    } else if (m.role in counts) {
+      counts[m.role as keyof typeof counts]++;
+    }
+  }
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const hidden = [
+    counts.system ? "system prompt" : "",
+    counts.user ? `${plural(counts.user, "earlier user message")}` : "",
+    counts.assistant ? `${plural(counts.assistant, "assistant message")}` : "",
+    tools.length ? `${plural(tools.length, "tool result")}: ${tools.join(", ")}` : "",
+  ].filter(Boolean);
+  return withHiddenContext(messages.at(-1)?.content ?? "", hidden);
+}
+
 function errorMessage(err: unknown): string {
   if (err instanceof Error) {
     const code = (err as { code?: unknown }).code;

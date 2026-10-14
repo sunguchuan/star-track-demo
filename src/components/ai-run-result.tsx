@@ -2,7 +2,9 @@
 
 import { ActionPlanCard } from "@/components/action-plan-card";
 import { formatTokens, formatUsd } from "@/lib/ai/format";
+import { localizeAiText } from "@/lib/ai/localize";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { GuardrailAction, RunUsage } from "@/lib/ai/types";
 import { RETRY_LOCAL_CODES, type AiStreamState } from "@/lib/ai/use-ai-stream";
 import Link from "next/link";
@@ -35,6 +37,7 @@ export function AiRunResult({
   onFeedback,
   emptyText = "",
 }: Props) {
+  const { locale } = useLocale();
   const {
     meta,
     cache,
@@ -81,7 +84,7 @@ export function AiRunResult({
           <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-800">
             {meta.model}
           </span>
-          <span className="text-zinc-500">{meta.reason}</span>
+          <span className="text-zinc-500">{localizeAiText(meta.reason, locale)}</span>
         </div>
       )}
 
@@ -126,10 +129,10 @@ export function AiRunResult({
                   [{copy.guardrailStages[hit.stage]} ·{" "}
                   {copy.guardrailActions[hit.action]}]
                 </span>{" "}
-                {hit.message}
+                {localizeAiText(hit.message, locale)}
                 {hit.detail && (
                   <span className="mt-0.5 block break-all font-mono text-[11px] opacity-80">
-                    {hit.detail}
+                    {localizeAiText(hit.detail, locale)}
                   </span>
                 )}
               </li>
@@ -200,9 +203,9 @@ export function AiRunResult({
 
       {error && (
         <div className="mb-2 space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          <p className="font-medium">{error.message}</p>
+          <p className="font-medium">{localizeAiText(error.message, locale)}</p>
           {error.hint && (
-            <p className="text-xs text-red-600/90">{error.hint}</p>
+            <p className="text-xs text-red-600/90">{localizeAiText(error.hint, locale)}</p>
           )}
           {onRetryLocal &&
             error.code &&

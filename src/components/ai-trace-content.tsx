@@ -1,6 +1,7 @@
 "use client";
 
 import { formatTokens, formatUsd } from "@/lib/ai/format";
+import { localizeAiText } from "@/lib/ai/localize";
 import type { AiRunRecord } from "@/lib/ai/runs";
 import type { SpanKind, SpanStatus, TraceSpan } from "@/lib/ai/trace";
 import { buildWaterfall, summarizeTrace, type WaterfallRow } from "@/lib/ai/trace-view";
@@ -207,7 +208,7 @@ function SpanRow({
 }
 
 function SpanDetail({ span }: { span: TraceSpan }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const copy = t.aiTrace;
   const facts: [string, string][] = [
     [copy.kind, copy.kinds[span.kind]],
@@ -240,7 +241,7 @@ function SpanDetail({ span }: { span: TraceSpan }) {
             span.status === "error" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-900"
           }`}
         >
-          {span.statusMessage}
+          {localizeAiText(span.statusMessage, locale)}
         </p>
       )}
       <Block label={copy.input} text={span.input} />

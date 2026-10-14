@@ -1,6 +1,7 @@
 "use client";
 
 import { formatTokens, formatUsd } from "@/lib/ai/format";
+import { localizeAiText } from "@/lib/ai/localize";
 import type { ModelPrice } from "@/lib/ai/pricing";
 import type { AiRunRecord, AiRunStats, LatencyStats } from "@/lib/ai/runs";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -434,7 +435,7 @@ export function AiRunsContent({
                       )}
                     </time>
                     {" · "}
-                    {run.reason}
+                    {localizeAiText(run.reason, locale)}
                   </p>
                   {run.spanCount > 0 && (
                     <Link

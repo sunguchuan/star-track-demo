@@ -24,6 +24,7 @@ import { noteStrongModelFailure } from "./router";
 import { isKnowledgeEnabled, KNOWLEDGE_TOOL_NAME } from "./tools/knowledge";
 import { executeTool, isAllowedTool, toOpenAiTools } from "./tools/registry";
 import {
+  promptPreview,
   recordGuardrails,
   RunTrace,
   traceGeneration,
@@ -271,11 +272,6 @@ type CallOptions = {
   span: Span;
 };
 
-/** Last message is what changed between calls; the full prompt is in the parent's context. */
-function lastMessage(messages: { content?: string | null }[]): string {
-  return messages.at(-1)?.content ?? "";
-}
-
 function completeWithTools(options: CallOptions & { messages: ChatCompletionMessage[] }) {
   const tools = toOpenAiTools();
   return traceGeneration(
@@ -284,7 +280,7 @@ function completeWithTools(options: CallOptions & { messages: ChatCompletionMess
     {
       target: options.target,
       model: options.model,
-      input: lastMessage(options.messages),
+      input: promptPreview(options.messages),
       metadata: { tools: tools.map((t) => t.function.name) },
     },
     (span) =>
@@ -351,7 +347,7 @@ async function requestStructuredPlan(
     const span = options.span.child("llm.action_plan", "generation", {
       target: options.target,
       model: options.model,
-      input: lastMessage(messages),
+      input: promptPreview(messages),
       metadata: { attempt: attempt + 1, responseFormat: "json_schema" },
     });
     let raw: string;
@@ -387,7 +383,7 @@ function streamFinalAnswer(
   const span = options.span.child("llm.text_plan", "generation", {
     target: options.target,
     model: options.model,
-    input: lastMessage(options.messages),
+    input: promptPreview(options.messages),
   });
   const call = {
     model: options.model,

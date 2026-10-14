@@ -1,7 +1,7 @@
+import { BackHomeLink } from "@/components/back-home-link";
 import { FabInvestigatePanel } from "@/components/fab-investigate-panel";
 import { SiteHeader } from "@/components/site-header";
 import { getFabSummary, listAlerts, listBatches } from "@/lib/fab/queries";
-import Link from "next/link";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,12 +26,7 @@ export default function FabPage() {
     <>
       <SiteHeader />
       <main className="mx-auto min-h-screen max-w-lg px-4 pb-12 pt-6">
-        <Link
-          href="/"
-          className="mb-4 inline-flex text-sm text-violet-700 hover:underline"
-        >
-          ← 返回首页
-        </Link>
+        <BackHomeLink />
 
         <h1 className="text-2xl font-bold text-violet-950">FAB Ops Demo</h1>
         <p className="mt-1 text-sm text-zinc-600">
