@@ -10,8 +10,9 @@ on:
         description: "Also score answers with the LLM judge"
         type: boolean
         default: true
-  schedule:
-    - cron: "0 9 * * *"
+  # Nightly eval paused: the free-tier Gemini key exceeds its 15 RPM limit during a full run.
+  # schedule:
+  #   - cron: "0 9 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
