@@ -9,7 +9,7 @@ import { randomUUID } from "crypto";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { capPayload } from "@/lib/ai/agent";
+import { capPayload } from "@/lib/ai/agents/specialists/runner";
 import { detectReplyLanguage } from "@/lib/ai/language";
 import { isCloudConfigured } from "@/lib/ai/router";
 import { KNOWLEDGE_TOOL_NAME } from "@/lib/ai/tools/knowledge";

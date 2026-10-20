@@ -8,7 +8,8 @@
  */
 import { readFileSync } from "fs";
 import { actionPlanJsonSchema } from "@/lib/ai/action-plan";
-import { investigateSystem, planMessages, toolResultContent } from "@/lib/ai/agent";
+import { plannerSystem, planMessages } from "@/lib/ai/agents/planner";
+import { toolResultContent } from "@/lib/ai/agents/specialists/runner";
 import { completeCloudChat } from "@/lib/ai/cloud";
 import { detectReplyLanguage } from "@/lib/ai/language";
 import { getCloudModel, isCloudConfigured } from "@/lib/ai/router";
@@ -28,7 +29,7 @@ function buildPlanCall(input: string, compress: boolean) {
   const language = detectReplyLanguage(input);
   const seen = new Set<string>();
   const messages: ChatCompletionMessage[] = [
-    { role: "system", content: investigateSystem(language) },
+    { role: "system", content: plannerSystem(language) },
     { role: "user", content: input },
     {
       role: "assistant",

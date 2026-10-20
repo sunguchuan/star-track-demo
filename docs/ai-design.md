@@ -82,7 +82,7 @@
 
 ## 4. 产品构成
 
-笔记助手和产线排查共用同一个调用层（`POST /api/ai/chat` + `useAiStream` + `AiRunResult`），各自只负责自己的界面和业务数据；运行看板和调用链只读运行记录；检索实验页直接调用和 Agent 相同的检索代码；MCP Server 把 Agent 的同一组工具开放给外部客户端。
+笔记助手和产线排查共用同一个调用层（`POST /api/ai/chat` + `useAiStream` + `AiRunResult`），各自只负责自己的界面和业务数据；运行看板和调用链只读运行记录；检索实验页绕过 Agent 和工具适配层，直接调用 `search_fab_knowledge` 背后的同一套 `retrieve()`；MCP Server 把 Agent 的同一组工具开放给外部客户端。图中把工具层单独框出，Gateway Agent 与 MCP 汇入同一组工具节点，不重复绘制。
 
 ```mermaid
 flowchart LR
@@ -94,8 +94,16 @@ flowchart LR
   end
   subgraph Gateway["共用调用层"]
     H["useAiStream + AiRunResult"]
-    G["POST /api/ai/chat<br/>护栏 / 路由 / 降级 / 缓存 / Agent"]
+    G["POST /api/ai/chat<br/>护栏 / 路由 / 降级 / 缓存"]
+    AG["investigate Agent<br/>Coordinator → Data / Procedure → Planner"]
     RUNS[("ai_runs + ai_spans<br/>运行记录")]
+  end
+  subgraph Tools["工具层（Agent 与 MCP 共用）"]
+    FT["FAB 数据工具<br/>get_fab_summary / list_fab_batches<br/>list_fab_alerts / get_fab_batch"]
+    KT["search_fab_knowledge<br/>参数校验 / 结果渲染"]
+  end
+  subgraph Retrieval["共享检索服务"]
+    R["rag.retrieve<br/>BM25 / 向量 / RRF / Rerank"]
   end
   subgraph Data["数据"]
     FABDB[("fab.db<br/>产线数据")]
@@ -105,14 +113,18 @@ flowchart LR
   A --> H
   B --> H
   H --> G
+  G -->|"taskType=investigate"| AG
+  AG --> FT
+  AG --> KT
+  MCP -->|"同一套工具 (stdio)"| FT
+  MCP -->|"同一套工具 (stdio)"| KT
+  FT --> FABDB
+  KT --> R
+  K -->|"POST：绕过 Agent，直接调用"| R
+  R --> KBASE
   G --> RUNS
   C --> RUNS
-  B -.->|"产线数据"| FABDB
-  G -.->|"工具查询"| FABDB
-  G -.->|"知识库检索"| KBASE
-  K -.->|"同一套检索"| KBASE
-  MCP -.->|"同一套工具 (stdio)"| FABDB
-  MCP -.-> KBASE
+  B -.->|"看板数据"| FABDB
 ```
 
 ### 4.1 笔记助手（`/ai`）
@@ -135,17 +147,16 @@ flowchart LR
 - 结果卡片同上，额外展示工具调用轨迹（工具名、参数、结果预览；知识库检索显示文档编号、章节、相关度）
 - "查看运行记录"链接到 `/ai/runs`，"知识库检索 →"链接到 `/fab/knowledge`
 
-**Agent 流程**（`taskType: "investigate"`，`src/lib/ai/agent.ts`）
+**Agent 流程**（`taskType: "investigate"`，多 Agent 编排，经 `agents/registry.ts` 注册）
 
-1. 模型先做一轮工具选择（非流式），要求一次请求所需的全部工具；问到处理规程、放行标准、规格或历史事故时同时调用知识库检索。
-   - 选了工具：模型没请求告警时自动补查未关闭告警（告警是每次排查的核心信号）。
-   - 没选工具且回复像拒答、自我介绍或反问（中文 < 200 字、英文 < 600 字，不含批次号 / 告警代码 / 百分比，也没有 Action Plan 章节）：直接返回这条回复，结束（`isDirectReply`）。
-   - 没选工具但回复像在做分析（较长、引用了数据或带章节，通常是不会调工具的本地模型）：强制拉取概况、未关闭告警、最近批次和知识库，防止没查数据就下结论。
-2. 服务端执行只读工具，结果作为数据交回模型。
-3. 模型按 JSON Schema 输出结构化 Action Plan（非流式），服务端校验，不合格时让模型修复一次；仍不合格则退回流式文本。
-4. 输出结束后自动核对，结果作为护栏提示显示。
+调用链形态：`agent.coordinator` → `agent.data` →（需要时）`agent.procedure` → `agent.planner`。
 
-只做一轮工具调用是刻意取舍：避开 Gemini 多轮 `thought_signature` 的兼容问题，也让延迟可控。
+1. **Coordinator**（`agents/investigate.ts`，约 100 行）只负责编排，不自己选工具。
+2. **Data Specialist**（`agents/specialists/data.ts`，经 `specialists/registry.ts` 注册）：只能用 FAB 数据工具。一轮工具选择；没要告警时自动补查未关闭告警；若短回复像拒答 / 自我介绍 / 反问，直接结束，不跑后续 Agent。选工具失败或本地模型不调工具时，强制拉概况、告警、最近批次。
+3. **Procedure Specialist**（`agents/specialists/procedure.ts`，知识库开启时）：只能用 `search_fab_knowledge`。在确认不是拒答之后再跑，避免「Who am I?」也去检索。
+4. **Planner**（`agents/planner.ts`）：只吃前面的工具结果，按 JSON Schema 写 Action Plan；校验失败修复一次，再失败退回流式文本；输出后做章节 / 事实核对。
+
+专职 Agent 由 `SpecialistDefinition`（身份、prompt、工具、兜底与策略）和 `SpecialistRunContext`（本次请求的 span、语言与模型执行上下文）描述，通用运行器在 `specialists/runner.ts`。硬边界是**工具白名单**（不是只靠 prompt）。仍刻意不做开放多轮 ReAct，以避开 Gemini `thought_signature` 问题并保持延迟可控。
 
 **工具**（只读，`src/lib/ai/tools/fab.ts`、`src/lib/ai/tools/knowledge.ts`）
 
@@ -318,7 +329,7 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 | `src/lib/ai/notes-storage.ts` | 笔记存储（localStorage） |
 | `src/app/fab/page.tsx` | 产线看板页 |
 | `src/components/fab-investigate-panel.tsx` | 产线排查输入与结果 |
-| `src/lib/ai/agent.ts` | 产线排查 Agent |
+| `src/lib/ai/agents/` | Agent 注册表 + 产线排查 Agent |
 | `src/lib/ai/action-plan.ts`、`src/components/action-plan-card.tsx` | 结构化 Action Plan 的 schema 与卡片 |
 | `src/lib/ai/tools/fab.ts` | 产线工具定义与执行器 |
 | `src/lib/fab/*` | 产线演示库（建表、种子、查询） |
@@ -367,7 +378,7 @@ CLOUD_MODEL=gemini-3.1-flash-lite
 - 任务类型 `investigate`，自动路由倾向云端，本地 Ollama 也支持工具调用
 - 一开始放在 `/ai` 的任务列表里，现已移到 `/fab` 的独立输入框（§4.2），`/ai` 只保留入口链接
 - Provider：`completeCloudChat` / `completeOllamaChat`（非流式 + tools）选工具，最终答案再流式输出
-- 文件：`src/lib/ai/tools/{types,fab,registry}.ts`（Step 6++ 加了 `knowledge.ts`）、`src/lib/ai/agent.ts`、`src/components/fab-investigate-panel.tsx`
+- 文件：`src/lib/ai/tools/{types,fab,registry}.ts`（Step 6++ 加了 `knowledge.ts`）、`src/lib/ai/agents/`、`src/components/fab-investigate-panel.tsx`
 
 ### Step 3：运行观测
 

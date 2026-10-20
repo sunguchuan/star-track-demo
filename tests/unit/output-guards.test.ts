@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  checkActionPlan,
-  checkGrounding,
-  checkOutputSecrets,
-} from "@/lib/ai/guardrails/output";
+import { checkActionPlan } from "@/lib/ai/agents/investigate-guards";
+import { checkGrounding, checkOutputSecrets } from "@/lib/ai/guardrails/output";
 
 const evidence = JSON.stringify([
   { id: "B-240901-02", toolId: "T-ETCH-07", startedAt: "2026-09-01T09:40:00Z", waferCount: 25, yieldPct: 96.8, scrapCount: 1 },

@@ -9,7 +9,9 @@ const en = (text: string) => localizeAiText(text, "en");
 /** Files whose Chinese strings reach the UI as guardrail messages, errors, hints or route reasons. */
 const SOURCES = [
   "src/app/api/ai/chat/route.ts",
-  "src/lib/ai/agent.ts",
+  "src/lib/ai/agents/investigate.ts",
+  "src/lib/ai/agents/planner.ts",
+  "src/lib/ai/agents/specialists/runner.ts",
   "src/lib/ai/cloud.ts",
   "src/lib/ai/embeddings.ts",
   "src/lib/ai/errors.ts",

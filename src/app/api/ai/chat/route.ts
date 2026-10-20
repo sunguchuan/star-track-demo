@@ -7,8 +7,8 @@
  *    sensitive data → reroute to local or redact before cloud
  * 3. Detect runtime + route (local Ollama vs cloud)
  * 4. Answer cache: replay an exact / semantically equivalent earlier answer when allowed
- * 5. Build prompt messages (or run investigate agent with tools); stream model output over
- *    SSE under a run timeout; fall back local⇄cloud when needed
+ * 5. Build prompt messages, or look up an Agent in the registry and run it; stream model
+ *    output over SSE under a run timeout; fall back local⇄cloud when needed
  * 6. Output guardrails, token usage / cost, then push done
  * 7. Record the run (route, fallback, latency, tools, guardrails, tokens, cost, cache) and
  *    its span tree for /ai/runs; store clean answers in the cache; export the trace to
@@ -22,6 +22,7 @@ import {
   storeSkipReason,
   type CacheContext,
 } from "@/lib/ai/cache-keys";
+import { getAgent } from "@/lib/ai/agents/registry";
 import { streamCloudChat } from "@/lib/ai/cloud";
 import { assessDifficulty, type ModelTier } from "@/lib/ai/difficulty";
 import type { Embedding } from "@/lib/ai/embeddings";
@@ -156,22 +157,11 @@ async function* runModel(options: {
   yield* streamOllamaChat(options);
 }
 
-/** Lazy so plain chat never loads node:sqlite (FAB tools) unless the agent runs. */
-async function* runInvestigateAgent(
-  options: Parameters<typeof import("@/lib/ai/agent").runInvestigateAgent>[0],
-): AsyncGenerator<StreamEvent> {
-  const agent = await import("@/lib/ai/agent");
-  yield* agent.runInvestigateAgent(options);
-}
-
-/** Investigate answers depend on the FAB tables and the knowledge base; other tasks only on their input. */
+/** Agent answers may depend on external data; text tasks only on their input. */
 async function cacheDataVersion(taskType: AiTaskType): Promise<string> {
-  if (taskType !== "investigate") return "-";
-  const { getFabDataVersion } = await import("@/lib/fab/queries");
-  const { isKnowledgeEnabled } = await import("@/lib/ai/tools/knowledge");
-  if (!isKnowledgeEnabled()) return getFabDataVersion();
-  const { getCorpusVersion } = await import("@/lib/rag/retrieve");
-  return `${getFabDataVersion()}+kb:${getCorpusVersion()}`;
+  const agent = getAgent(taskType);
+  if (!agent?.dataVersion) return "-";
+  return agent.dataVersion();
 }
 
 function cacheReason(hit: { mode: string; similarity: number | null }): string {
@@ -205,7 +195,8 @@ export async function POST(request: Request) {
   }
 
   const { taskType, strategy } = body;
-  const useAgent = taskType === "investigate";
+  const agentDef = getAgent(taskType);
+  const useAgent = agentDef != null;
   const runId = randomUUID();
   const trace = new RunTrace(runId);
   const root = trace.start("ai.chat", useAgent ? "agent" : "span", {
@@ -518,10 +509,11 @@ export async function POST(request: Request) {
         const onUsage = (usage: TokenUsage, usedModel?: string | null) =>
           meter.add(target, usage, usedModel);
         try {
-          if (useAgent) {
+          if (agentDef) {
             // Strong tier writes the Action Plan only; tool selection stays on the fast model.
             const strongRun = target === "cloud" && strongModel != null && runModelName === strongModel;
-            for await (const event of runInvestigateAgent({
+            const runAgent = await agentDef.load();
+            for await (const event of runAgent({
               target,
               model: strongRun ? getCloudModel() : runModelName,
               planModel: strongRun ? strongModel : null,

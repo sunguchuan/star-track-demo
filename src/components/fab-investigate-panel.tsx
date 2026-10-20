@@ -5,20 +5,28 @@
  * → agent calls read-only FAB tools → streamed Action Plan.
  */
 import Link from "next/link";
-import { useState } from "react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AiStrategy } from "@/lib/ai/types";
 import { useAiStream } from "@/lib/ai/use-ai-stream";
+import { useSessionDraft } from "@/lib/use-session-draft";
 import { AiRunResult } from "@/components/ai-run-result";
 
 const STRATEGY_VALUES: AiStrategy[] = ["auto", "only-local", "only-cloud"];
+const QUESTION_DRAFT_KEY = "startrail-fab-question";
+const STRATEGY_DRAFT_KEY = "startrail-fab-strategy";
+
+function isStrategy(value: string): value is AiStrategy {
+  return (STRATEGY_VALUES as string[]).includes(value);
+}
 
 export function FabInvestigatePanel() {
   const { t } = useLocale();
   const copy = t.fabInvestigate;
   const aiCopy = t.aiPage;
-  const [question, setQuestion] = useState("");
-  const [strategy, setStrategy] = useState<AiStrategy>("auto");
+  const [question, setQuestion] = useSessionDraft(QUESTION_DRAFT_KEY, "");
+  const [strategyDraft, setStrategyDraft] = useSessionDraft(STRATEGY_DRAFT_KEY, "auto");
+  const strategy = isStrategy(strategyDraft) ? strategyDraft : "auto";
+  const setStrategy = (next: AiStrategy) => setStrategyDraft(next);
   const { state, start, stop, sendFeedback } = useAiStream(aiCopy);
 
   function run(nextStrategy: AiStrategy = strategy, cache = true) {

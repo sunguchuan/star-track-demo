@@ -174,8 +174,8 @@ flowchart LR
 **为什么用规则路由，不让模型"智能选择"？**
 可解释、可测试、零额外调用。任务类型 + 策略按钮 + 环境检测 + 难度打分就能讲清每次为什么走这边；打分写进调用链和看板，可以对照结果调权重。以后可以换成轻量分类模型。
 
-**为什么 Agent 只做一轮工具调用？**
-延迟可控，也避开了 Gemini 多轮 `thought_signature` 的兼容问题。用"一次要齐所需工具 + 自动补查告警 + 本地模型强制拉数据"弥补。升级多轮 Agent 前要先把 Gateway 改成 Agent 注册表（[`ai-gateway.md` §13](ai-gateway.md#13-现状耦合与后续拆分)），评测题可以直接验证升级效果。
+**为什么是多 Agent，却仍然不是开放多轮循环？**
+Investigate 拆成 Coordinator → Data / Procedure → Planner：专职 Agent 在 `specialists/registry.ts` 注册，每个只拿自己的工具白名单，调用链里能看到嵌套的 `agent.*` span。但每个专职 Agent 内部仍只做一轮工具选择，以保持延迟可控并避开 Gemini 多轮 `thought_signature`。Gateway 已是任务级 Agent 注册表（[`ai-gateway.md` §13](ai-gateway.md#13-现状耦合与后续拆分)），后续加 Critic 或新任务只需注册。
 
 **怎么防止模型编数据？**
 四层：只读工具（模型只能看到查询结果）→ prompt 要求只引用工具返回的编号 → 结构化输出的 `refs` 逐个核对（不在工具数据里就标红）→ 文本里的编号和百分比再做一次事实核对（允许推算值）。工具轨迹在界面上可见。
@@ -209,7 +209,7 @@ MCP 客户端用它自己的模型，Gateway 的路由、护栏、事实核对�
 ## 7. 已知局限
 
 - 数据是合成的，只有 3 台设备、12 个批次、6 条告警、13 篇文档；检索阈值是在同一批题上调出来的，有过拟合风险。
-- Agent 只做一轮工具调用，复杂问题可能查不全。
+- 每个专职 Agent 仍只做一轮工具选择，极复杂的多跳排查可能查不全；开放多轮是下一步。
 - 线上（Vercel）没有本机模型；运行记录、缓存、调用链只在单个实例内有效，冷启动清空。
 - 本地 gemma4 结构化输出慢（40–55 s），演示以云端为主。
 - 22 题评测样本小，单次结果有 1–2 题波动；`evals/baseline.json` 仍是加入知识库题之前的 17 题基线，需要重跑 `npm run eval -- --judge --save-baseline`。
@@ -224,7 +224,7 @@ MCP 客户端用它自己的模型，Gateway 的路由、护栏、事实核对�
 | 1 | `src/lib/fab/db.ts`、`queries.ts` | 数据和故事 |
 | 2 | `src/components/fab-investigate-panel.tsx` | 前端入口 |
 | 3 | `src/app/api/ai/chat/route.ts` | Gateway 主流程（护栏 → 路由 → 缓存 → 尝试 / 降级 → 记录） |
-| 4 | `src/lib/ai/agent.ts` | 选工具、执行、Action Plan、修复 / 回退 / 升级 |
+| 4 | `src/lib/ai/agents/` | 注册表 + 产线 Agent（选工具、Action Plan、修复 / 回退 / 升级） |
 | 5 | `src/lib/ai/tools/{fab,knowledge,registry}.ts` | 工具定义、白名单、参数校验 |
 | 6 | `src/lib/ai/action-plan.ts`、`guardrails/output.ts` | Schema 与引用核对 |
 | 7 | `src/lib/rag/{corpus,bm25,retrieve,rerank}.ts` | 检索流程 |

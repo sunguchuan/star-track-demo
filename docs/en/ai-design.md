@@ -82,7 +82,7 @@ Not a fit for:
 
 ## 4. Product Components
 
-The notes assistant and production-line investigation share the same AI Gateway (`POST /api/ai/chat` + `useAiStream` + `AiRunResult`); each owns only its own UI and business data. The runs dashboard and call trace only read run records; the retrieval lab calls the same retrieval code as the agent; the MCP Server exposes the agent's tool set to external clients.
+The notes assistant and production-line investigation share the same AI Gateway (`POST /api/ai/chat` + `useAiStream` + `AiRunResult`); each owns only its own UI and business data. The runs dashboard and call trace only read run records; the retrieval lab bypasses the agent and the tool adapter and calls the same `retrieve()` that backs `search_fab_knowledge`; the MCP Server exposes the agent's tool set to external clients. The diagram boxes the tool layer on its own, with the Gateway agent and MCP converging on the same tool nodes instead of duplicating them.
 
 ```mermaid
 flowchart LR
@@ -94,8 +94,16 @@ flowchart LR
   end
   subgraph Gateway["Shared AI Gateway"]
     H["useAiStream + AiRunResult"]
-    G["POST /api/ai/chat<br/>guardrails / routing / fallback / cache / Agent"]
+    G["POST /api/ai/chat<br/>guardrails / routing / fallback / cache"]
+    AG["investigate agent<br/>Coordinator → Data / Procedure → Planner"]
     RUNS[("ai_runs + ai_spans<br/>run records")]
+  end
+  subgraph Tools["Tool layer (shared by agent and MCP)"]
+    FT["Fab data tools<br/>get_fab_summary / list_fab_batches<br/>list_fab_alerts / get_fab_batch"]
+    KT["search_fab_knowledge<br/>argument checks / result rendering"]
+  end
+  subgraph Retrieval["Shared retrieval service"]
+    R["rag.retrieve<br/>BM25 / vector / RRF / rerank"]
   end
   subgraph Data["Data"]
     FABDB[("fab.db<br/>fab data")]
@@ -105,14 +113,18 @@ flowchart LR
   A --> H
   B --> H
   H --> G
+  G -->|"taskType=investigate"| AG
+  AG --> FT
+  AG --> KT
+  MCP -->|"same tools (stdio)"| FT
+  MCP -->|"same tools (stdio)"| KT
+  FT --> FABDB
+  KT --> R
+  K -->|"POST: bypasses the agent, calls directly"| R
+  R --> KBASE
   G --> RUNS
   C --> RUNS
-  B -.->|"fab data"| FABDB
-  G -.->|"tool queries"| FABDB
-  G -.->|"knowledge-base retrieval"| KBASE
-  K -.->|"same retrieval"| KBASE
-  MCP -.->|"same tools (stdio)"| FABDB
-  MCP -.-> KBASE
+  B -.->|"dashboard data"| FABDB
 ```
 
 ### 4.1 Notes Assistant (`/ai`)
@@ -135,17 +147,16 @@ Investigation lives on the fab dashboard page so users can ask questions while l
 - Result card as above, plus the tool-call trace (tool name, arguments, result preview; knowledge-base retrieval shows doc ID, section and relevance)
 - A "Runs →" link goes to `/ai/runs`, and a "Knowledge search →" link goes to `/fab/knowledge`
 
-**Agent flow** (`taskType: "investigate"`, `src/lib/ai/agent.ts`)
+**Agent flow** (`taskType: "investigate"`, multi-agent orchestration, registered via `agents/registry.ts`)
 
-1. The model first runs a tool-selection round (non-streaming) and is asked to request every tool the request needs in one go; when the question touches handling procedures, release criteria, specs or past incidents, it also calls knowledge-base retrieval.
-   - Tools selected: if the model did not request alerts, open alerts are fetched automatically (alerts are the core signal of every investigation).
-   - No tools selected, and the reply looks like a refusal, a self-introduction or a clarifying question (Chinese < 200 characters, English < 600 characters, no batch ID / alert code / percentage, and no Action Plan section): return that reply directly and stop (`isDirectReply`).
-   - No tools selected, but the reply looks like analysis (longer, cites data or has sections — usually a local model that will not call tools): run a forced data round that fetches the summary, open alerts, recent batches and the knowledge base, so the model cannot draw conclusions without looking at the data.
-2. The server executes the read-only tools and hands the results back to the model as data.
-3. The model emits a structured Action Plan conforming to a JSON Schema (non-streaming); the server validates it and asks the model to repair it once on failure; if it still fails, it falls back to streamed text.
-4. After the output finishes, an automatic check runs, and its results are shown as guardrail notices.
+Trace shape: `agent.coordinator` → `agent.data` → (when needed) `agent.procedure` → `agent.planner`.
 
-A single tool round is a deliberate trade-off: it sidesteps Gemini's multi-turn `thought_signature` compatibility issues and keeps latency predictable.
+1. **Coordinator** (`agents/investigate.ts`, about 100 lines) only orchestrates; it does not pick tools itself.
+2. **Data Specialist** (`agents/specialists/data.ts`, registered via `specialists/registry.ts`): fab data tools only. One tool-selection round; open alerts are topped up if skipped; a short refusal / identity / clarification reply ends the run with no further agents. If tool selection fails or a local model skips tools, force-pull summary, alerts and recent batches.
+3. **Procedure Specialist** (`agents/specialists/procedure.ts`, when the knowledge base is on): `search_fab_knowledge` only. Runs only after the data specialist confirms this is an investigation, so "Who am I?" never hits retrieval.
+4. **Planner** (`agents/planner.ts`): consumes the tool results only, emits a JSON-Schema Action Plan, repairs once on validation failure, otherwise falls back to streamed text, then runs section / grounding checks.
+
+Specialists are described by a `SpecialistDefinition` (identity, prompt, tools, fallback and policy) plus a `SpecialistRunContext` (this request's span, language and model execution context); the generic runner lives in `specialists/runner.ts`. The hard boundary is the **tool allowlist** (not prompt text alone). Still no open multi-turn ReAct loop — keeps Gemini `thought_signature` issues away and latency predictable.
 
 **Tools** (read-only, `src/lib/ai/tools/fab.ts`, `src/lib/ai/tools/knowledge.ts`)
 
@@ -282,7 +293,7 @@ Acceptance criteria for the AI Gateway itself (routing, fallback, each guardrail
 | --- | --- |
 | Free cloud quota / poor stability | Gateway retries + fallback to local; model IDs documented explicitly |
 | Model fabricates fab data | Read-only tools + prompt constraints + fact check + visible tool trace |
-| The agent does only one tool round, so complex questions may be under-investigated | Deliberate trade-off; a forced data round of the three data types when the model calls no tools |
+| Each specialist still does only one tool-selection round, so multi-hop questions may be under-investigated | Deliberate trade-off; open multi-turn is next; forced fab data pull when the data agent skips tools |
 | Notes live only in the local browser | Acceptable for a demo; accounts and server-side storage later |
 | Production data and records are not persistent | Acceptable for a demo; persistence requires a hosted database |
 | The structured Action Plan is shown only once fully generated | Show the tool trace and "generating" first; later, a streaming card with incremental JSON parsing |
@@ -318,7 +329,7 @@ For AI Gateway files, see [`ai-gateway.md` §16](ai-gateway.md#16-file-index).
 | `src/lib/ai/notes-storage.ts` | Note storage (localStorage) |
 | `src/app/fab/page.tsx` | Fab dashboard page |
 | `src/components/fab-investigate-panel.tsx` | Production-line investigation input and results |
-| `src/lib/ai/agent.ts` | Production-line investigation agent |
+| `src/lib/ai/agents/` | Agent registry + production-line investigation agent |
 | `src/lib/ai/action-plan.ts`, `src/components/action-plan-card.tsx` | Schema and card for the structured Action Plan |
 | `src/lib/ai/tools/fab.ts` | Fab tool definitions and executors |
 | `src/lib/fab/*` | Fab demo database (schema, seed, queries) |
@@ -367,7 +378,7 @@ Goal: evolve the existing Hybrid Gateway toward a "production-line assistant" sl
 - Task type `investigate`; auto routing leans cloud, and local Ollama also supports tool calling
 - Originally in the `/ai` task list, now moved to a dedicated input box on `/fab` (§4.2); `/ai` keeps only a link
 - Provider: `completeCloudChat` / `completeOllamaChat` (non-streaming + tools) select the tools, then the final answer is streamed
-- Files: `src/lib/ai/tools/{types,fab,registry}.ts` (Step 6++ added `knowledge.ts`), `src/lib/ai/agent.ts`, `src/components/fab-investigate-panel.tsx`
+- Files: `src/lib/ai/tools/{types,fab,registry}.ts` (Step 6++ added `knowledge.ts`), `src/lib/ai/agents/`, `src/components/fab-investigate-panel.tsx`
 
 ### Step 3: Run Observability
 

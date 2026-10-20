@@ -7,7 +7,8 @@ import {
   renderActionPlan,
   type ActionPlan,
 } from "@/lib/ai/action-plan";
-import { ACTION_PLAN_SECTIONS, checkActionPlan } from "@/lib/ai/guardrails/output";
+import { ACTION_PLAN_SECTIONS } from "@/lib/ai/action-plan";
+import { checkActionPlan } from "@/lib/ai/agents/investigate-guards";
 
 const evidence = JSON.stringify([
   { id: "B-240909-01", toolId: "T-ETCH-07", yieldPct: 89.4 },

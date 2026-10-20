@@ -74,7 +74,7 @@ Each of steps ①–⑦ is recorded as a span in `trace.ts` (see §9.1).
 | Provider | `src/lib/ai/ollama.ts`, `src/lib/ai/cloud.ts` | Streaming / non-streaming (with tools) calls |
 | Errors | `src/lib/ai/errors.ts` | `AiProviderError` classification, fallback decisions |
 | Guardrails | `src/lib/ai/guardrails/{input,resource,output}.ts` | See §7 |
-| Agent | `src/lib/ai/agent.ts` + `src/lib/ai/tools/*` | Tool-calling loop, tool allowlist and argument validation |
+| Agent | `src/lib/ai/agents/*` + `src/lib/ai/tools/*` | Registry lookup then agent run; tool allowlist and argument validation |
 | Structured output | `src/lib/ai/action-plan.ts` | Action Plan zod schema → JSON Schema, validation, Markdown rendering, reference checks |
 | Pricing | `src/lib/ai/pricing.ts` | Cloud unit prices (overridable via env vars); `UsageMeter` accumulates tokens and cost per local / cloud |
 | SSE | `src/lib/ai/sse.ts` | `StreamEvent` → `text/event-stream` |
@@ -86,7 +86,7 @@ Each of steps ①–⑦ is recorded as a span in `trace.ts` (see §9.1).
 | Frontend hook | `src/lib/ai/use-ai-stream.ts` | See §10 |
 | Result component | `src/components/ai-run-result.tsx` | See §10 |
 
-The Gateway loads `agent.ts` and `runs.ts` via dynamic `import()`: regular chat does not depend on `node:sqlite`, so basic chat keeps working even if the runtime lacks SQLite.
+The Gateway lazy-loads a concrete Agent through the registry's `load()`, and loads `runs.ts` via dynamic `import()`: regular chat does not depend on `node:sqlite`, so basic chat keeps working even if the runtime lacks SQLite.
 
 ---
 
@@ -648,7 +648,7 @@ const text = await start({ input, taskType: "investigate", strategy: "auto" });
 3. `prompts.ts`: add a system prompt to `TASK_PROMPTS` (safety rules and the `<user_text>` wrapper are added automatically).
 4. i18n: add a name to `aiPage.tasks`; the consumer UI invokes it via `useAiStream`.
 
-**Adding an Agent task**: the Gateway currently decides whether to use the Agent via `taskType === "investigate"`; before adding a second Agent, this should become a registry first (see §13). The Agent must produce `StreamEvent`s and invoke its own output checks.
+**Adding an Agent task**: register it in `src/lib/ai/agents/registry.ts` (`taskType` → `load` / optional `dataVersion`). The Gateway only looks the task up; it no longer hard-codes task names. The Agent must produce `StreamEvent`s and invoke its own output checks.
 
 **Adding a tool**: write the definition (OpenAI function format) and the executor in `tools/<domain>.ts`; the executor returns `{ ok: true, data }` or `{ ok: false, kind, error }` (`kind` is `invalid_args` / `not_found` / `unknown_tool` / `internal`); once registered in `tools/registry.ts` it is automatically on the allowlist. Argument format validation lives in the executor. Tools that are async, need to appear in the call trace or respond per language (e.g. `tools/knowledge.ts`) receive a `ToolContext` (routing target, abort signal, tool span, usage callback, question language) and can additionally return `content` (text given directly to the model instead of JSON) and `sources` (pushed to the frontend with `tool_result`). Registered tools also show up automatically in the MCP Server (§9.5); their parameter Schemas must be convertible by `z.fromJSONSchema` (currently only `string` / `number` / `boolean` and `enum` are used); don't register tools with write operations there directly — on the MCP side everything is marked read-only.
 
@@ -698,22 +698,22 @@ Internal guardrail constants (change in code): input 8000 chars, history 12 mess
 
 The AI Gateway code currently lives alongside business code in `src/lib/ai/`, with boundaries kept by convention. Known coupling points:
 
-| Coupling | Current state | Recommendation |
+| Coupling | Current state | Status |
 | --- | --- | --- |
-| The Gateway knows about a specific Agent | `useAgent = taskType === "investigate"`, plus a dynamic import of `agent.ts` | Switch to an Agent registry: `taskType → (options) => AsyncGenerator<StreamEvent>`; the Gateway only does a lookup |
-| Business tasks are hardcoded in core types | `AiTaskType`, `CLOUD_TASKS`, `TASK_PROMPTS` define all tasks centrally | Task definitions (name, default route, prompt / agent) registered by each feature |
-| FAB-specific checks live in the generic guardrails directory | `checkActionPlan` (sections, ID format) is in `guardrails/output.ts` | Move to the production-line Agent side; keep only `checkOutputSecrets` and a configurable `checkGrounding` in the generic directory |
-| Server-side copy is hardcoded in Chinese | Errors, guardrail `message`s and route `reason`s are all in Chinese | Server returns codes; the frontend translates per locale |
-| `only-local` semantics | Still falls back to cloud when local fails and a key is configured | Make `only-local` never fall back (or state it in the UI) |
-| Knowledge-base retrieval is tied to the production-line scenario | `search_fab_knowledge` is only in investigate's tool list; the corpus directory is fixed at `data/kb`, and the filter fields (document type, alert code) are production-line specific | `src/lib/rag` itself is domain-agnostic; register corpus directories and filter fields per domain so regular chat can use it too |
+| The Gateway knows about a specific Agent | Switched to an Agent registry: `getAgent(taskType)` → `load()`; cache data versions come from the Agent's `dataVersion` | **Done** (`src/lib/ai/agents/`) |
+| FAB-specific checks live in the generic guardrails directory | `checkActionPlan` / `ACTION_PLAN_SECTIONS` moved to the production-line Agent side; generic directory keeps `checkOutputSecrets` and `checkGrounding` | **Done** |
+| Business tasks are hardcoded in core types | `AiTaskType`, `CLOUD_TASKS`, `TASK_PROMPTS` define all tasks centrally | Todo: task definitions (name, default route, prompt / agent) registered by each feature |
+| Server-side copy is hardcoded in Chinese | Errors, guardrail `message`s and route `reason`s are still Chinese (the frontend can translate via `localizeAiText`) | Partially mitigated; full fix is server-side codes |
+| `only-local` semantics | Still falls back to cloud when local fails and a key is configured | Todo: make `only-local` never fall back (or state it in the UI) |
+| Knowledge-base retrieval is tied to the production-line scenario | `search_fab_knowledge` is only in investigate's tool list; the corpus directory is fixed at `data/kb`, and the filter fields (document type, alert code) are production-line specific | Todo: register corpus directories and filter fields per domain in `src/lib/rag` |
 
-Proposed target structure (a separate refactor, no protocol changes):
+Proposed target structure (later refactors, no protocol changes):
 
 ```
 src/lib/ai/core/        types, router, errors, sse, runs, providers/{ollama,cloud}, guardrails/
 src/lib/ai/client/      use-ai-stream (AiRunResult stays in components/)
 src/lib/ai/tasks/       Prompt registration for text tasks
-src/lib/ai/agents/      Agent registry + investigate
+src/lib/ai/agents/      Agent registry + investigate (landed)
 src/lib/fab/            Production-line domain data + tools
 ```
 
@@ -801,7 +801,11 @@ The rule-level parts of items 6–8 and 10–12 are covered by `npm test` (unit 
 | `src/lib/ai/guardrails/input.ts` | Cleanup, length, injection, sensitive data |
 | `src/lib/ai/guardrails/resource.ts` | Rate limit, timeout, output cap config |
 | `src/lib/ai/guardrails/output.ts` | Fact checking, section check, secret check |
-| `src/lib/ai/agent.ts` | Agent loop, tool guardrails, per-stage prompts, structured Action Plan (repair / fallback / strong-tier downgrade / cascade escalation) |
+| `src/lib/ai/agents/registry.ts` | Task-level Agent registry (Gateway lookup only) |
+| `src/lib/ai/agents/investigate.ts` | Coordinator: orchestrates data → procedure → planner only |
+| `src/lib/ai/agents/specialists/` | Specialist definitions, internal registry, generic runner and run-context types |
+| `src/lib/ai/agents/planner.ts` | Planner prompts, structured Action Plan, strong-tier downgrade / cascade escalation and text fallback |
+| `src/lib/ai/agents/investigate-guards.ts` | Investigate-specific output checks (required sections, grounding) |
 | `src/lib/ai/action-plan.ts` | Action Plan schema, validation, Markdown rendering, reference checks |
 | `src/lib/ai/pricing.ts` | Per-model cloud unit prices, cost calculation, `UsageMeter` |
 | `src/lib/ai/language.ts` | Infers reply language from the question (Chinese / English) |

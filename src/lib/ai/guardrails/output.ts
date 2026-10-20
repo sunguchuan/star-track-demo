@@ -1,26 +1,18 @@
 /**
- * Output guardrails — run after streaming finishes (tokens are already shown,
- * so these warn rather than block).
+ * Generic output guardrails — run after streaming finishes (tokens are already
+ * shown, so these warn rather than block).
+ *
+ * FAB Action Plan section checks live with the investigate agent
+ * (`agents/investigate-guards.ts`); this module keeps secrets and grounding only.
  */
 import type { GuardrailHit } from "../types";
 import { describeFindings, findSensitive } from "./input";
-
-/** One entry per required section: the Chinese title and a case-insensitive English keyword. */
-export const ACTION_PLAN_SECTIONS = [
-  { zh: "现象", en: "symptom" },
-  { zh: "可能原因", en: "cause" },
-  { zh: "建议动作", en: "recommended action" },
-  { zh: "需确认的数据", en: "to confirm" },
-] as const;
 
 const BATCH_ID = /\bB-\d{6}-\d{2}\b/g;
 const TOOL_ID = /\bT-[A-Z]+-\d{2}\b/g;
 const ALERT_CODE = /\b[A-Z]{2,}(?:-[A-Z]{2,})+\b/g;
 const PERCENT = /(\d+(?:\.\d+)?)\s*%/g;
-const MAX_LISTED = 10;
 const NUMBER_TOLERANCE = 0.05;
-/** Shorter replies (refusals, "batch not found") are not expected to follow the plan format. */
-const MIN_PLAN_CHARS = 200;
 
 function evidenceNumbers(evidence: string): number[] {
   const stripped = evidence
@@ -75,40 +67,6 @@ export function checkGrounding(output: string, evidence: string): string[] {
   }
 
   return ungrounded;
-}
-
-export function checkActionPlan(output: string, evidence: string): GuardrailHit[] {
-  const hits: GuardrailHit[] = [];
-  if (!output.trim()) return hits;
-
-  const lower = output.toLowerCase();
-  const missing = ACTION_PLAN_SECTIONS.filter(
-    (s) => !output.includes(s.zh) && !lower.includes(s.en),
-  );
-  if (missing.length > 0 && output.trim().length >= MIN_PLAN_CHARS) {
-    hits.push({
-      stage: "output",
-      rule: "missing_sections",
-      action: "warn",
-      message: "Action Plan 缺少规定章节",
-      detail: missing.map((s) => s.zh).join("、"),
-    });
-  }
-
-  const ungrounded = checkGrounding(output, evidence);
-  if (ungrounded.length > 0) {
-    hits.push({
-      stage: "output",
-      rule: "ungrounded_facts",
-      action: "warn",
-      message: "以下内容未在工具返回的数据中找到，请人工核实",
-      detail:
-        ungrounded.slice(0, MAX_LISTED).join(", ") +
-        (ungrounded.length > MAX_LISTED ? ` 等 ${ungrounded.length} 项` : ""),
-    });
-  }
-
-  return hits;
 }
 
 /** Secrets only — PII in output is often legitimate (e.g. polishing a contact note). */

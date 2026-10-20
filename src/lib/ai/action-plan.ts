@@ -6,6 +6,14 @@
 import { z } from "zod";
 import type { ReplyLanguage } from "./language";
 
+/** One entry per required section: the Chinese title and a case-insensitive English keyword. */
+export const ACTION_PLAN_SECTIONS = [
+  { zh: "现象", en: "symptom" },
+  { zh: "可能原因", en: "cause" },
+  { zh: "建议动作", en: "recommended action" },
+  { zh: "需确认的数据", en: "to confirm" },
+] as const;
+
 /** IDs only; the pattern also stops grammar-constrained local models from putting sentences here. */
 const REF_PATTERN = /^[A-Z][A-Z0-9-]{1,39}$/;
 

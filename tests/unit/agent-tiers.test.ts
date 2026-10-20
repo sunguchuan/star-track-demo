@@ -22,11 +22,13 @@ const plan = (ref: string) =>
 let planReplies: Record<string, string | number> = {};
 let calls: { model: string; kind: "tools" | "plan"; system: string; lastUser: string; toolResults: string[] }[] = [];
 
-let runInvestigateAgent: typeof import("@/lib/ai/agent").runInvestigateAgent;
+let runInvestigateAgent: typeof import("@/lib/ai/agents/investigate").runInvestigateAgent;
 
 before(async () => {
   process.chdir(mkdtempSync(join(tmpdir(), "agent-tiers-test-")));
   process.env.OPENAI_API_KEY = "test-key";
+  // Keep a single tool-selection call in these tier tests (data agent only).
+  process.env.AI_RAG = "off";
   globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as {
       model: string;
@@ -61,7 +63,7 @@ before(async () => {
     if (typeof reply === "number") return new Response("model overloaded", { status: reply });
     return Response.json({ usage, choices: [{ message: { content: reply } }] });
   }) as typeof fetch;
-  ({ runInvestigateAgent } = await import("@/lib/ai/agent"));
+  ({ runInvestigateAgent } = await import("@/lib/ai/agents/investigate"));
 });
 
 beforeEach(() => {
@@ -100,7 +102,8 @@ describe("investigate agent model tiers", () => {
     assert.equal(metas[0].escalated, true);
     assert.equal(metas[0].model, STRONG);
     assert.deepEqual(planEvent?.ungroundedRefs, []);
-    assert.deepEqual(usageModels, [STANDARD, STANDARD, STRONG]);
+    assert.ok(usageModels.includes(STANDARD) && usageModels.includes(STRONG));
+    assert.equal(usageModels.at(-1), STRONG);
   });
 
   it("keeps the standard plan when the strong model does no better", async () => {
@@ -142,7 +145,7 @@ describe("investigate agent model tiers", () => {
     const full = calls.find((c) => c.kind === "plan");
     assert.ok(full);
     assert.match(full.toolResults[0], /"toolId":"T-ETCH-07"/);
-    assert.match(full.system, /You get one tool round/);
+    assert.match(full.system, /Specialist agents have already gathered/);
     assert.match(full.lastUser, /Shape:/);
   });
 });

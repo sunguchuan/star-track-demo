@@ -11,7 +11,8 @@ const IDENTITY_EN =
 const REFUSAL_EN =
   "I only provide assistance for production-line and semiconductor fab manufacturing investigations. Please let me know if you have any questions regarding batch statuses, yields, or active alerts.";
 
-let agent: typeof import("@/lib/ai/agent");
+let runInvestigateAgent: typeof import("@/lib/ai/agents/investigate").runInvestigateAgent;
+let isDirectReply: typeof import("@/lib/ai/agents/specialists/runner").isDirectReply;
 let firstReply = "";
 let toolCallsPerformed = 0;
 
@@ -24,30 +25,31 @@ before(async () => {
     const usage = { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 };
     return Response.json({ usage, choices: [{ message: { content: firstReply } }] });
   }) as typeof fetch;
-  agent = await import("@/lib/ai/agent");
+  ({ runInvestigateAgent } = await import("@/lib/ai/agents/investigate"));
+  ({ isDirectReply } = await import("@/lib/ai/agents/specialists/runner"));
 });
 
 describe("isDirectReply", () => {
   it("passes refusals and identity answers through in both languages", () => {
-    assert.ok(agent.isDirectReply(IDENTITY_EN, "en"));
-    assert.ok(agent.isDirectReply(REFUSAL_EN, "en"));
-    assert.ok(agent.isDirectReply("我只处理产线排查相关的问题，例如批次良率、告警和处置流程。", "zh"));
-    assert.ok(agent.isDirectReply("Which batch do you mean? Please give me the batch ID.", "en"));
-    assert.ok(agent.isDirectReply("I can't tell the cause because I have no data yet.", "en"), "'because' is not a section");
+    assert.ok(isDirectReply(IDENTITY_EN, "en"));
+    assert.ok(isDirectReply(REFUSAL_EN, "en"));
+    assert.ok(isDirectReply("我只处理产线排查相关的问题，例如批次良率、告警和处置流程。", "zh"));
+    assert.ok(isDirectReply("Which batch do you mean? Please give me the batch ID.", "en"));
+    assert.ok(isDirectReply("I can't tell the cause because I have no data yet.", "en"), "'because' is not a section");
   });
 
   it("forces data when the reply makes claims it never looked up", () => {
-    assert.equal(agent.isDirectReply("B-240909-01 yield dropped to 89.4%.", "en"), false);
-    assert.equal(agent.isDirectReply("ETCH-RF-DRIFT is the likely trigger.", "en"), false);
-    assert.equal(agent.isDirectReply("T-ETCH-07 needs a chamber clean.", "en"), false);
+    assert.equal(isDirectReply("B-240909-01 yield dropped to 89.4%.", "en"), false);
+    assert.equal(isDirectReply("ETCH-RF-DRIFT is the likely trigger.", "en"), false);
+    assert.equal(isDirectReply("T-ETCH-07 needs a chamber clean.", "en"), false);
   });
 
   it("forces data for a plan written without tools", () => {
-    assert.equal(agent.isDirectReply("1. Symptoms: yield is low\n2. Likely causes: chamber drift", "en"), false);
-    assert.equal(agent.isDirectReply("现象：良率偏低\n可能原因：腔体漂移", "zh"), false);
-    assert.equal(agent.isDirectReply("x".repeat(600), "en"), false);
-    assert.equal(agent.isDirectReply("良".repeat(200), "zh"), false);
-    assert.equal(agent.isDirectReply("", "en"), false);
+    assert.equal(isDirectReply("1. Symptoms: yield is low\n2. Likely causes: chamber drift", "en"), false);
+    assert.equal(isDirectReply("现象：良率偏低\n可能原因：腔体漂移", "zh"), false);
+    assert.equal(isDirectReply("x".repeat(600), "en"), false);
+    assert.equal(isDirectReply("良".repeat(200), "zh"), false);
+    assert.equal(isDirectReply("", "en"), false);
   });
 });
 
@@ -56,7 +58,7 @@ describe("investigate agent on an identity question", () => {
     firstReply = IDENTITY_EN;
     toolCallsPerformed = 0;
     const events: StreamEvent[] = [];
-    for await (const event of agent.runInvestigateAgent({
+    for await (const event of runInvestigateAgent({
       target: "cloud",
       model: "fast-model",
       userInput: "Who am I?",

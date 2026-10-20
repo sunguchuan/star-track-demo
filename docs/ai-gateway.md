@@ -74,7 +74,7 @@
 | Provider | `src/lib/ai/ollama.ts`、`src/lib/ai/cloud.ts` | 流式 / 非流式（带工具）调用 |
 | 错误 | `src/lib/ai/errors.ts` | `AiProviderError` 分类、降级判定 |
 | 护栏 | `src/lib/ai/guardrails/{input,resource,output}.ts` | 见 §7 |
-| Agent | `src/lib/ai/agent.ts` + `src/lib/ai/tools/*` | 工具调用循环、工具白名单与参数校验 |
+| Agent | `src/lib/ai/agents/*` + `src/lib/ai/tools/*` | 注册表查表后跑 Agent；工具白名单与参数校验 |
 | 结构化输出 | `src/lib/ai/action-plan.ts` | Action Plan 的 zod schema → JSON Schema、校验、Markdown 渲染、引用核对 |
 | 计价 | `src/lib/ai/pricing.ts` | 云端单价（可被环境变量覆盖）、`UsageMeter` 按本地 / 云端累计 Token 与费用 |
 | SSE | `src/lib/ai/sse.ts` | `StreamEvent` → `text/event-stream` |
@@ -86,7 +86,7 @@
 | 前端 hook | `src/lib/ai/use-ai-stream.ts` | 见 §10 |
 | 结果组件 | `src/components/ai-run-result.tsx` | 见 §10 |
 
-Gateway 用动态 `import()` 加载 `agent.ts` 和 `runs.ts`：普通对话不依赖 `node:sqlite`，即使运行时缺少 SQLite，基础聊天也能用。
+Gateway 通过 Agent 注册表的 `load()` 懒加载具体 Agent，并用动态 `import()` 加载 `runs.ts`：普通对话不依赖 `node:sqlite`，即使运行时缺少 SQLite，基础聊天也能用。
 
 ---
 
@@ -649,7 +649,7 @@ const text = await start({ input, taskType: "investigate", strategy: "auto" });
 3. `prompts.ts`：`TASK_PROMPTS` 加 system prompt（安全规则和 `<user_text>` 包裹会自动加上）。
 4. i18n：`aiPage.tasks` 加名称；使用方 UI 用 `useAiStream` 发起。
 
-**新增 Agent 型任务**：目前 Gateway 用 `taskType === "investigate"` 判断是否走 Agent，新增第二个 Agent 时应先改成注册表（见 §13）。Agent 需要产出 `StreamEvent`，并自行调用相应的输出核对。
+**新增 Agent 型任务**：在 `src/lib/ai/agents/registry.ts` 注册（`taskType` → `load` / 可选 `dataVersion`）。Gateway 只查表，不再硬编码任务名。Agent 需要产出 `StreamEvent`，并自行调用相应的输出核对。
 
 **新增工具**：在 `tools/<领域>.ts` 写定义（OpenAI function 格式）和执行器，执行器返回 `{ ok: true, data }` 或 `{ ok: false, kind, error }`（`kind` 为 `invalid_args` / `not_found` / `unknown_tool` / `internal`）；在 `tools/registry.ts` 注册后自动进入白名单。参数格式校验写在执行器里。需要异步、要进调用链或要按语言返回的工具（如 `tools/knowledge.ts`）拿到 `ToolContext`（路由目标、取消信号、工具 span、用量回调、提问语言），可以额外返回 `content`（直接给模型的文本，代替 JSON）和 `sources`（随 `tool_result` 推给前端）。注册后的工具也会自动出现在 MCP Server 里（§9.5），参数 Schema 要能被 `z.fromJSONSchema` 转换（目前只用到 `string` / `number` / `boolean` 和 `enum`）；有写操作的工具不要直接注册进去，MCP 那边都标为只读。
 
@@ -699,22 +699,22 @@ const text = await start({ input, taskType: "investigate", strategy: "auto" });
 
 调用层的代码目前和业务代码一起放在 `src/lib/ai/`，边界靠约定。已知的耦合点：
 
-| 耦合 | 现状 | 建议 |
+| 耦合 | 现状 | 状态 |
 | --- | --- | --- |
-| Gateway 认识具体 Agent | `useAgent = taskType === "investigate"`，并动态 import `agent.ts` | 改成 Agent 注册表：`taskType → (options) => AsyncGenerator<StreamEvent>`，Gateway 只查表 |
-| 业务任务写在核心类型里 | `AiTaskType`、`CLOUD_TASKS`、`TASK_PROMPTS` 集中定义了所有任务 | 任务定义（名称、默认路由、prompt / agent）由各功能注册 |
-| FAB 专用核对放在通用护栏目录 | `checkActionPlan`（章节、编号格式）在 `guardrails/output.ts` | 移到产线 Agent 一侧；通用目录只留 `checkOutputSecrets` 和可配置的 `checkGrounding` |
-| 服务端文案写死中文 | 错误、护栏 `message`、路由 `reason` 都是中文 | 服务端返回 code，前端按语言翻译 |
-| `only-local` 语义 | 本地失败且配了 Key 时仍会降级云端 | 明确 `only-local` 不降级（或在 UI 上说明） |
-| 知识库检索绑定产线场景 | `search_fab_knowledge` 只在 investigate 的工具列表里；语料目录固定 `data/kb`，过滤字段（文档类型、告警代码）是产线专用 | `src/lib/rag` 本身与领域无关；按领域注册语料目录和过滤字段，普通对话也可以接入 |
+| Gateway 认识具体 Agent | 已改为 Agent 注册表：`getAgent(taskType)` → `load()`；缓存版本号也由 Agent 的 `dataVersion` 提供 | **已做**（`src/lib/ai/agents/`） |
+| FAB 专用核对放在通用护栏目录 | `checkActionPlan` / `ACTION_PLAN_SECTIONS` 已移到产线 Agent 一侧；通用目录只留 `checkOutputSecrets` 和 `checkGrounding` | **已做** |
+| 业务任务写在核心类型里 | `AiTaskType`、`CLOUD_TASKS`、`TASK_PROMPTS` 集中定义了所有任务 | 待做：任务定义（名称、默认路由、prompt / agent）由各功能注册 |
+| 服务端文案写死中文 | 错误、护栏 `message`、路由 `reason` 仍是中文（前端 `localizeAiText` 可按语言显示） | 部分缓解；彻底方案是服务端返回 code |
+| `only-local` 语义 | 本地失败且配了 Key 时仍会降级云端 | 待做：明确 `only-local` 不降级（或在 UI 上说明） |
+| 知识库检索绑定产线场景 | `search_fab_knowledge` 只在 investigate 的工具列表里；语料目录固定 `data/kb`，过滤字段（文档类型、告警代码）是产线专用 | 待做：`src/lib/rag` 按领域注册语料目录和过滤字段 |
 
-建议的目标结构（单独一次重构，不改协议）：
+建议的目标结构（后续重构，不改协议）：
 
 ```
 src/lib/ai/core/        types、router、errors、sse、runs、providers/{ollama,cloud}、guardrails/
 src/lib/ai/client/      use-ai-stream（AiRunResult 仍在 components/）
 src/lib/ai/tasks/       文本任务的 prompt 注册
-src/lib/ai/agents/      Agent 注册表 + investigate
+src/lib/ai/agents/      Agent 注册表 + investigate（已落地）
 src/lib/fab/            产线领域数据 + tools
 ```
 
@@ -802,7 +802,11 @@ src/lib/fab/            产线领域数据 + tools
 | `src/lib/ai/guardrails/input.ts` | 清理、长度、注入、敏感信息 |
 | `src/lib/ai/guardrails/resource.ts` | 限流、超时、输出上限配置 |
 | `src/lib/ai/guardrails/output.ts` | 事实核对、章节检查、密钥检查 |
-| `src/lib/ai/agent.ts` | Agent 循环、工具护栏、按阶段的 prompt、结构化 Action Plan（修复 / 回退 / 强模型降级 / 级联升级） |
+| `src/lib/ai/agents/registry.ts` | 任务级 Agent 注册表（Gateway 只查表） |
+| `src/lib/ai/agents/investigate.ts` | Coordinator：只编排 data → procedure → planner |
+| `src/lib/ai/agents/specialists/` | Specialist 定义、内部注册表、通用运行器与运行上下文类型 |
+| `src/lib/ai/agents/planner.ts` | Planner prompt、结构化 Action Plan、强模型降级 / 级联升级与文本回退 |
+| `src/lib/ai/agents/investigate-guards.ts` | 产线专用输出核对（章节齐全、事实接地） |
 | `src/lib/ai/action-plan.ts` | Action Plan schema、校验、Markdown 渲染、引用核对 |
 | `src/lib/ai/pricing.ts` | 按模型的云端单价、费用计算、`UsageMeter` |
 | `src/lib/ai/language.ts` | 按提问判断回答语言（中 / 英） |

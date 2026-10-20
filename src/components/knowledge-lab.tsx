@@ -10,6 +10,18 @@ import { useState } from "react";
 import { localizeAiText } from "@/lib/ai/localize";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { KbDocType, KbLang } from "@/lib/rag/corpus";
+import { useSessionDraft } from "@/lib/use-session-draft";
+
+const QUERY_DRAFT_KEY = "startrail-kb-query";
+const DOC_TYPE_DRAFT_KEY = "startrail-kb-doc-type";
+const ALERT_CODE_DRAFT_KEY = "startrail-kb-alert-code";
+// Mirror of KB_DOC_TYPES in lib/rag/corpus; that module imports Node fs and
+// cannot be value-imported into this client component.
+const DOC_TYPE_VALUES: readonly KbDocType[] = ["runbook", "sop", "incident", "spec"];
+
+function isDocType(value: string): value is KbDocType {
+  return (DOC_TYPE_VALUES as readonly string[]).includes(value);
+}
 
 type DocSummary = {
   id: string;
@@ -69,9 +81,11 @@ type Props = {
 export function KnowledgeLab({ docs, sectionCount, chunkCount, rerankAvailable }: Props) {
   const { t, locale } = useLocale();
   const copy = t.fabKnowledge;
-  const [query, setQuery] = useState("");
-  const [docType, setDocType] = useState<"" | KbDocType>("");
-  const [alertCode, setAlertCode] = useState("");
+  const [query, setQuery] = useSessionDraft(QUERY_DRAFT_KEY, "");
+  const [docTypeDraft, setDocTypeDraft] = useSessionDraft(DOC_TYPE_DRAFT_KEY, "");
+  const docType: "" | KbDocType = isDocType(docTypeDraft) ? docTypeDraft : "";
+  const setDocType = (next: "" | KbDocType) => setDocTypeDraft(next);
+  const [alertCode, setAlertCode] = useSessionDraft(ALERT_CODE_DRAFT_KEY, "");
   const [rerank, setRerank] = useState(rerankAvailable);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

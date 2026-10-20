@@ -11,14 +11,24 @@ import type { OpenAiTool, ToolDefinition } from "./types";
 
 export type { ToolContext } from "./knowledge";
 
-/** Fab data tools, plus knowledge search unless AI_RAG=off. */
-export function listToolDefinitions(): ToolDefinition[] {
-  return isKnowledgeEnabled() ? [...FAB_TOOL_DEFINITIONS, KNOWLEDGE_TOOL_DEFINITION] : FAB_TOOL_DEFINITIONS;
+/** Fab data tools only (batches, alerts, summary). */
+export function listFabToolDefinitions(): ToolDefinition[] {
+  return [...FAB_TOOL_DEFINITIONS];
 }
 
-/** Allowlist check: the model may only invoke tools we advertised. */
-export function isAllowedTool(name: string): boolean {
-  return listToolDefinitions().some((d) => d.name === name);
+/** Knowledge search only; empty when AI_RAG=off. */
+export function listKnowledgeToolDefinitions(): ToolDefinition[] {
+  return isKnowledgeEnabled() ? [KNOWLEDGE_TOOL_DEFINITION] : [];
+}
+
+/** Fab data tools, plus knowledge search unless AI_RAG=off. */
+export function listToolDefinitions(): ToolDefinition[] {
+  return [...listFabToolDefinitions(), ...listKnowledgeToolDefinitions()];
+}
+
+/** Allowlist check: the model may only invoke tools from `defs` (defaults to all registered). */
+export function isAllowedTool(name: string, defs: ToolDefinition[] = listToolDefinitions()): boolean {
+  return defs.some((d) => d.name === name);
 }
 
 export function toOpenAiTools(defs: ToolDefinition[] = listToolDefinitions()): OpenAiTool[] {

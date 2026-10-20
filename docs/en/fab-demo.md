@@ -174,8 +174,8 @@ If time is short, keep steps 1, 2, 3, 5 and 8 — about 5 minutes.
 **Why rule-based routing instead of letting the model "choose intelligently"?**
 Explainable, testable, and zero extra calls. Task type + strategy toggle + environment detection + difficulty score are enough to explain why each request went where it did; the scores are written to the call trace and the dashboard, so weights can be tuned against outcomes. It can be swapped for a lightweight classifier later.
 
-**Why does the Agent do only one round of tool calls?**
-Latency stays predictable, and it sidesteps compatibility issues with Gemini's multi-turn `thought_signature`. The gap is covered by "request all needed tools at once + auto-fetch alerts + forced data round for local models". Before upgrading to a multi-turn Agent, the Gateway first needs to become an Agent registry ([`ai-gateway.md` §13](ai-gateway.md#13-current-coupling-and-planned-split)); the golden set can directly verify the effect of the upgrade.
+**Why multi-agent, but still not an open multi-turn loop?**
+Investigate is split into Coordinator → Data / Procedure → Planner: specialists are registered in `specialists/registry.ts`, each gets only its tool allowlist, and the call trace shows nested `agent.*` spans. Inside each specialist there is still one tool-selection round, so latency stays predictable and Gemini's multi-turn `thought_signature` issues stay out of the way. The Gateway is already a task-level Agent registry ([`ai-gateway.md` §13](ai-gateway.md#13-current-coupling-and-planned-split)); adding a Critic or a new task is registration, not a rewrite.
 
 **How do you stop the model from fabricating data?**
 Four layers: read-only tools (the model only sees query results) → the prompt requires citing only IDs returned by tools → every entry in the structured output's `refs` is checked (flagged red if it is not in the tool data) → IDs and percentages in the text get a second fact check (derived values allowed). The tool trace is visible in the UI.
@@ -209,7 +209,7 @@ Integration with real MES / alert systems (currently synthetic data); moving run
 ## 7. Known limitations
 
 - The data is synthetic: only 3 tools, 12 batches, 6 alerts and 13 documents; retrieval thresholds were tuned on the same set of queries, so there is a risk of overfitting.
-- The Agent does only one round of tool calls, so complex questions may not be fully investigated.
+- Each specialist still does only one tool-selection round, so multi-hop investigations may be incomplete; open multi-turn is next.
 - The deployed version (Vercel) has no local model; run records, the cache and call traces only live within a single instance and are wiped on cold start.
 - Local gemma4 structured output is slow (40–55 s), so the demo mainly uses cloud.
 - The 22-case eval is a small sample, and single runs fluctuate by 1–2 cases; `evals/baseline.json` is still the 17-case baseline from before the knowledge-base cases were added and needs a rerun with `npm run eval -- --judge --save-baseline`.
@@ -224,7 +224,7 @@ Integration with real MES / alert systems (currently synthetic data); moving run
 | 1 | `src/lib/fab/db.ts`, `queries.ts` | The data and the story |
 | 2 | `src/components/fab-investigate-panel.tsx` | Frontend entry point |
 | 3 | `src/app/api/ai/chat/route.ts` | Gateway main flow (guardrails → routing → cache → attempt / fallback → record) |
-| 4 | `src/lib/ai/agent.ts` | Tool selection, execution, Action Plan, repair / fallback / escalation |
+| 4 | `src/lib/ai/agents/` | Registry + investigate agent (tools, Action Plan, repair / fallback / escalation) |
 | 5 | `src/lib/ai/tools/{fab,knowledge,registry}.ts` | Tool definitions, allowlist, argument validation |
 | 6 | `src/lib/ai/action-plan.ts`, `guardrails/output.ts` | Schema and citation checks |
 | 7 | `src/lib/rag/{corpus,bm25,retrieve,rerank}.ts` | Retrieval pipeline |
