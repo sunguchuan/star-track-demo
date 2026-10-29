@@ -156,9 +156,9 @@ Trace shape: `agent.coordinator` → `agent.data` → (when needed) `agent.proce
 3. **Procedure Specialist** (`agents/specialists/procedure.ts`, when the knowledge base is on): `search_fab_knowledge` only. Runs only after the data specialist confirms this is an investigation, so "Who am I?" never hits retrieval.
 4. **Planner** (`agents/planner.ts`): consumes the tool results only, emits a JSON-Schema Action Plan, repairs once on validation failure, otherwise falls back to streamed text, then runs section / grounding checks.
 
-Specialists are described by a `SpecialistDefinition` (identity, prompt, tools, fallback and policy) plus a `SpecialistRunContext` (this request's span, language and model execution context); the generic runner lives in `specialists/runner.ts`. LangGraph replaces only the Coordinator control flow; tool execution, hybrid retrieval, guardrails and Action Plan checks stay custom. The hard boundary is the **tool allowlist** (not prompt text alone). Still no open multi-turn ReAct loop — keeps Gemini `thought_signature` issues away and latency predictable.
+Specialists are described by a `SpecialistDefinition` (identity, prompt, tools, fallback and policy) plus a `SpecialistRunContext` (this request's span, language and model execution context); the generic runner lives in `specialists/runner.ts`. LangGraph replaces only the Coordinator control flow; tool definitions and business executors, hybrid retrieval, guardrails and Action Plan checks stay custom. When a specialist actually calls a tool, it goes through the LangChain `DynamicStructuredTool` adapter in `tools/langchain.ts` (same underlying `executeTool`). The hard boundary is the **tool allowlist** (not prompt text alone). Still no open multi-turn ReAct loop — keeps Gemini `thought_signature` issues away and latency predictable.
 
-**Tools** (read-only, `src/lib/ai/tools/fab.ts`, `src/lib/ai/tools/knowledge.ts`)
+**Tools** (read-only, `src/lib/ai/tools/fab.ts`, `src/lib/ai/tools/knowledge.ts`; LangChain adapter in `tools/langchain.ts`)
 
 | Tool | Purpose |
 | --- | --- |
@@ -331,7 +331,7 @@ For AI Gateway files, see [`ai-gateway.md` §16](ai-gateway.md#16-file-index).
 | `src/components/fab-investigate-panel.tsx` | Production-line investigation input and results |
 | `src/lib/ai/agents/` | Agent registry + production-line investigation agent (Coordinator orchestrated by LangGraph) |
 | `src/lib/ai/action-plan.ts`, `src/components/action-plan-card.tsx` | Schema and card for the structured Action Plan |
-| `src/lib/ai/tools/fab.ts` | Fab tool definitions and executors |
+| `src/lib/ai/tools/fab.ts`, `knowledge.ts`, `langchain.ts` | Fab / knowledge tool definitions and executors; LangChain StructuredTool adapter |
 | `src/lib/fab/*` | Fab demo database (schema, seed, queries) |
 | `src/app/api/fab/*` | Fab query API |
 | `src/app/ai/runs/page.tsx`, `src/components/ai-runs-content.tsx` | Runs dashboard |

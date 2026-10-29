@@ -590,6 +590,7 @@ flowchart LR
   C["MCP 客户端<br/>Cursor / Claude Desktop"] -- "stdio（JSON-RPC）" --> S["scripts/mcp/server.ts"]
   S --> F["src/lib/mcp/fab-server.ts"]
   F --> R["tools/registry.ts<br/>listToolDefinitions / executeTool"]
+  R --> LC["tools/langchain.ts<br/>DynamicStructuredTool 适配"]
   R --> D["fab.db"]
   R --> K["src/lib/rag<br/>data/kb + kb-index.db"]
   A["Agent（Gateway 内）"] --> R
@@ -811,7 +812,7 @@ src/lib/fab/            产线领域数据 + tools
 | `src/lib/ai/pricing.ts` | 按模型的云端单价、费用计算、`UsageMeter` |
 | `src/lib/ai/language.ts` | 按提问判断回答语言（中 / 英） |
 | `src/lib/ai/format.ts` | Token 数与金额的显示格式 |
-| `src/lib/ai/tools/*` | 工具定义、执行器、白名单 |
+| `src/lib/ai/tools/*` | 工具定义、执行器、白名单；`langchain.ts` 为 LangChain 适配 |
 | `src/lib/ai/sse.ts` | SSE 编码 |
 | `src/lib/ai/runs.ts` | 运行记录、调用链存储与统计 |
 | `src/lib/ai/trace.ts` | span 树、generation / 流式包装、护栏 span |

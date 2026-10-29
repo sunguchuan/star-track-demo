@@ -589,6 +589,7 @@ flowchart LR
   C["MCP client<br/>Cursor / Claude Desktop"] -- "stdio (JSON-RPC)" --> S["scripts/mcp/server.ts"]
   S --> F["src/lib/mcp/fab-server.ts"]
   F --> R["tools/registry.ts<br/>listToolDefinitions / executeTool"]
+  R --> LC["tools/langchain.ts<br/>DynamicStructuredTool adapter"]
   R --> D["fab.db"]
   R --> K["src/lib/rag<br/>data/kb + kb-index.db"]
   A["Agent (inside the Gateway)"] --> R
@@ -810,7 +811,7 @@ The rule-level parts of items 6–8 and 10–12 are covered by `npm test` (unit 
 | `src/lib/ai/pricing.ts` | Per-model cloud unit prices, cost calculation, `UsageMeter` |
 | `src/lib/ai/language.ts` | Infers reply language from the question (Chinese / English) |
 | `src/lib/ai/format.ts` | Display formatting for token counts and amounts |
-| `src/lib/ai/tools/*` | Tool definitions, executors, allowlist |
+| `src/lib/ai/tools/*` | Tool definitions, executors, allowlist; `langchain.ts` is the LangChain adapter |
 | `src/lib/ai/sse.ts` | SSE encoding |
 | `src/lib/ai/runs.ts` | Run records, call-trace storage and statistics |
 | `src/lib/ai/trace.ts` | Span tree, generation / streaming wrappers, guardrail spans |

@@ -11,7 +11,8 @@ import { compactToolResult, type SeenRows } from "../../compress";
 import { completeCloudChat } from "../../cloud";
 import type { ReplyLanguage } from "../../language";
 import { completeOllamaChat } from "../../ollama";
-import { executeTool, isAllowedTool, toOpenAiTools } from "../../tools/registry";
+import { executeToolViaLangChain } from "../../tools/langchain";
+import { isAllowedTool, toOpenAiTools } from "../../tools/registry";
 import type {
   ChatCompletionMessage,
   ToolCallRequest,
@@ -204,7 +205,9 @@ async function* emitToolRound(
       input: call.arguments,
       metadata: { callId: call.id, source: toolCallSource(call.id) },
     });
-    const executed = await executeTool(call.name, call.arguments, {
+    // Execute through the LangChain tool adapter so specialists share the same
+    // StructuredTool interface, while still receiving our ToolResult shape.
+    const executed = await executeToolViaLangChain(call.name, call.arguments, {
       target: context.execution.target,
       signal: context.execution.signal,
       span: toolSpan,
