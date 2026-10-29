@@ -1,20 +1,60 @@
 /**
  * Multi-agent investigate workflow for taskType=investigate.
  *
- * The coordinator composes registered specialists and the planner:
- * data (live fab tools) -> procedure (knowledge search, when available)
- * -> planner (structured Action Plan). Gateway only loads this workflow
- * through the task-level Agent registry.
+ * LangGraph owns the Coordinator control flow (data → procedure → planner,
+ * with early exit on direct reply / abort). Specialist tool rounds and the
+ * planner still run through the existing TypeScript modules so tools, RAG,
+ * guardrails and Action Plan checks stay outside the framework.
  */
 import { promptCompressionEnabled } from "../compress";
 import { detectReplyLanguage } from "../language";
 import { RunTrace } from "../trace";
 import type { StreamEvent } from "../types";
-import { runPlanner, type PlannerOutcome } from "./planner";
-import { getSpecialist } from "./specialists/registry";
-import { gatherSpecialist } from "./specialists/runner";
+import {
+  compileInvestigateGraph,
+  type InvestigateGraphState,
+} from "./investigate-graph";
 import type { SpecialistRunContext } from "./specialists/types";
 import type { AgentRunOptions } from "./types";
+
+/**
+ * Bridge LangGraph node emits into an async generator without a lost-wakeup
+ * race: a completion or event that arrives between "queue empty" and
+ * "register waiter" must still resume the consumer.
+ */
+/** Exported for unit tests of the stream bridge race. */
+export function createEventBridge() {
+  const pending: StreamEvent[] = [];
+  const waiters: Array<() => void> = [];
+  const kick = () => {
+    const resolvers = waiters.splice(0, waiters.length);
+    for (const resolve of resolvers) resolve();
+  };
+  return {
+    pending,
+    emit(event: StreamEvent) {
+      pending.push(event);
+      kick();
+    },
+    kick,
+    waitUntil(hasWork: () => boolean) {
+      return new Promise<void>((resolve) => {
+        if (hasWork()) {
+          resolve();
+          return;
+        }
+        waiters.push(resolve);
+        // Close the race where kick() ran after hasWork() was false but before
+        // this waiter was registered.
+        if (hasWork()) {
+          const index = waiters.indexOf(resolve);
+          if (index >= 0) waiters.splice(index, 1);
+          resolve();
+        }
+      });
+    },
+  };
+}
 
 export async function* runInvestigateAgent(
   options: AgentRunOptions,
@@ -25,7 +65,12 @@ export async function* runInvestigateAgent(
   const language = detectReplyLanguage(options.userInput);
   const compress = promptCompressionEnabled();
   const coordinator = span.child("agent.coordinator", "agent", {
-    metadata: { language, promptCompression: compress, workflow: "multi_agent" },
+    metadata: {
+      language,
+      promptCompression: compress,
+      workflow: "langgraph",
+      orchestration: "data→procedure→planner",
+    },
   });
   const specialistContext: SpecialistRunContext = {
     parentSpan: coordinator,
@@ -40,75 +85,64 @@ export async function* runInvestigateAgent(
     },
   };
 
-  // Data first: it owns short out-of-scope / identity replies. If it answers
-  // directly, procedure and planner must not spend calls on the request.
-  const data = await gatherSpecialist(
-    getSpecialist("data"),
+  const bridge = createEventBridge();
+  const graph = compileInvestigateGraph({
+    emit: bridge.emit,
     specialistContext,
-  );
-  for (const event of data.events) yield event;
+    options,
+  });
 
-  if (options.signal.aborted) {
+  type Settled =
+    | { ok: true; state: InvestigateGraphState }
+    | { ok: false; error: unknown };
+  let settled: Settled | null = null;
+  const running = graph
+    .invoke({ userInput: options.userInput })
+    .then(
+      (state): Settled => ({ ok: true, state }),
+      (error: unknown): Settled => ({ ok: false, error }),
+    )
+    .then((result) => {
+      settled = result;
+      bridge.kick();
+      return result;
+    });
+
+  while (true) {
+    while (bridge.pending.length > 0) {
+      yield bridge.pending.shift()!;
+    }
+    if (settled != null) break;
+    await bridge.waitUntil(
+      () => settled != null || bridge.pending.length > 0,
+    );
+  }
+
+  const result = await running;
+  if (!result.ok) {
+    coordinator.end({ status: "error", statusMessage: "langgraph_failed" });
+    throw result.error;
+  }
+
+  const state = result.state;
+  if (state.aborted) {
     coordinator.end({ status: "warning", statusMessage: "aborted" });
     return;
   }
-
-  if (data.directReply) {
+  if (state.directReply) {
     coordinator.end({
-      metadata: { outcome: "direct_reply", agents: ["data"] },
+      metadata: { outcome: "direct_reply", agents: state.agents },
     });
     span.update({ metadata: { outcome: "direct_reply" } });
-    yield { type: "delta", text: data.directReply };
     return;
   }
 
-  const procedure = await gatherSpecialist(
-    getSpecialist("procedure"),
-    specialistContext,
-  );
-  for (const event of procedure.events) yield event;
-
-  if (options.signal.aborted) {
-    coordinator.end({ status: "warning", statusMessage: "aborted" });
-    return;
-  }
-
-  const evidence = [...data.evidence, ...procedure.evidence];
-  const agents = procedure.skipped
-    ? ["data", "planner"]
-    : ["data", "procedure", "planner"];
-  coordinator.update({
-    metadata: {
-      toolPayload: {
-        rawChars:
-          data.payloadStats.rawChars + procedure.payloadStats.rawChars,
-        sentChars:
-          data.payloadStats.sentChars + procedure.payloadStats.sentChars,
-      },
-      agents,
-    },
-  });
-
-  // IDs typed by the user (for example a batch that does not exist) are quoted,
-  // not invented by the model, so the original input belongs in the evidence.
-  const sources = [options.userInput, ...evidence].join("\n");
-  const outcome: PlannerOutcome = yield* runPlanner({
-    parentSpan: coordinator,
-    userInput: options.userInput,
-    toolTranscripts: [data.toolMessages, procedure.toolMessages],
-    sources,
-    language,
-    compress,
-    execution: specialistContext.execution,
-    planModel: options.planModel,
-    escalationModel: options.escalationModel,
-  });
-
+  const outcome = state.plannerOutcome ?? "aborted";
   if (outcome === "aborted") {
     coordinator.end({ status: "warning", statusMessage: "aborted" });
     return;
   }
 
-  coordinator.end({ metadata: { outcome, agents } });
+  coordinator.end({ metadata: { outcome, agents: state.agents } });
   span.update({ metadata: { outcome } });
 }

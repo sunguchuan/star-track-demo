@@ -107,5 +107,7 @@ describe("multi-agent specialists", () => {
     assert.ok(names.includes("agent.data"));
     assert.ok(names.includes("agent.planner"));
     assert.ok(!names.includes("agent.procedure"), "procedure skipped when AI_RAG=off");
+    const coordinator = trace.spans.find((span) => span.name === "agent.coordinator");
+    assert.equal(coordinator?.metadata?.workflow, "langgraph");
   });
 });

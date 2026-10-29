@@ -151,12 +151,12 @@ Investigation lives on the fab dashboard page so users can ask questions while l
 
 Trace shape: `agent.coordinator` → `agent.data` → (when needed) `agent.procedure` → `agent.planner`.
 
-1. **Coordinator** (`agents/investigate.ts`, about 100 lines) only orchestrates; it does not pick tools itself.
+1. **Coordinator** (`agents/investigate.ts` + `agents/investigate-graph.ts`) orchestrates with a **LangGraph** `StateGraph`: node order and conditional edges (skip the rest on a Data direct reply / abort). It does not pick tools itself.
 2. **Data Specialist** (`agents/specialists/data.ts`, registered via `specialists/registry.ts`): fab data tools only. One tool-selection round; open alerts are topped up if skipped; a short refusal / identity / clarification reply ends the run with no further agents. If tool selection fails or a local model skips tools, force-pull summary, alerts and recent batches.
 3. **Procedure Specialist** (`agents/specialists/procedure.ts`, when the knowledge base is on): `search_fab_knowledge` only. Runs only after the data specialist confirms this is an investigation, so "Who am I?" never hits retrieval.
 4. **Planner** (`agents/planner.ts`): consumes the tool results only, emits a JSON-Schema Action Plan, repairs once on validation failure, otherwise falls back to streamed text, then runs section / grounding checks.
 
-Specialists are described by a `SpecialistDefinition` (identity, prompt, tools, fallback and policy) plus a `SpecialistRunContext` (this request's span, language and model execution context); the generic runner lives in `specialists/runner.ts`. The hard boundary is the **tool allowlist** (not prompt text alone). Still no open multi-turn ReAct loop — keeps Gemini `thought_signature` issues away and latency predictable.
+Specialists are described by a `SpecialistDefinition` (identity, prompt, tools, fallback and policy) plus a `SpecialistRunContext` (this request's span, language and model execution context); the generic runner lives in `specialists/runner.ts`. LangGraph replaces only the Coordinator control flow; tool execution, hybrid retrieval, guardrails and Action Plan checks stay custom. The hard boundary is the **tool allowlist** (not prompt text alone). Still no open multi-turn ReAct loop — keeps Gemini `thought_signature` issues away and latency predictable.
 
 **Tools** (read-only, `src/lib/ai/tools/fab.ts`, `src/lib/ai/tools/knowledge.ts`)
 
@@ -329,7 +329,7 @@ For AI Gateway files, see [`ai-gateway.md` §16](ai-gateway.md#16-file-index).
 | `src/lib/ai/notes-storage.ts` | Note storage (localStorage) |
 | `src/app/fab/page.tsx` | Fab dashboard page |
 | `src/components/fab-investigate-panel.tsx` | Production-line investigation input and results |
-| `src/lib/ai/agents/` | Agent registry + production-line investigation agent |
+| `src/lib/ai/agents/` | Agent registry + production-line investigation agent (Coordinator orchestrated by LangGraph) |
 | `src/lib/ai/action-plan.ts`, `src/components/action-plan-card.tsx` | Schema and card for the structured Action Plan |
 | `src/lib/ai/tools/fab.ts` | Fab tool definitions and executors |
 | `src/lib/fab/*` | Fab demo database (schema, seed, queries) |
